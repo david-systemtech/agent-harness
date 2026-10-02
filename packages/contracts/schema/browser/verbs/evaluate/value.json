@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvaluateValue",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "description": "The address the page has now."
+    },
+    "result": {
+      "description": "The expression's value, as JSON.",
+      "$ref": "#/$defs/__schema0"
+    }
+  },
+  "required": [
+    "url",
+    "result"
+  ],
+  "description": "The page's address and what an expression evaluated to.",
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    }
+  }
+}

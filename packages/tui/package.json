@@ -1,0 +1,40 @@
+{
+  "name": "@agent-harness/tui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@agent-harness/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./screenless": {
+      "@agent-harness/source": "./src/screenless.ts",
+      "types": "./dist/screenless.d.ts",
+      "default": "./dist/screenless.js"
+    },
+    "./terminal-state": {
+      "@agent-harness/source": "./src/platform/terminal-batch.ts",
+      "types": "./dist/platform/terminal-batch.d.ts",
+      "default": "./dist/platform/terminal-batch.js"
+    }
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agent-harness/client-runtime": "workspace:*",
+    "@agent-harness/contracts": "workspace:*",
+    "@agent-harness/theme": "workspace:*",
+    "@xterm/headless": "6.0.0",
+    "ink": "7.1.1",
+    "react": "19.3.0",
+    "string-width": "8.3.0",
+    "uqr": "^0.1.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "ink-testing-library": "4.0.0"
+  }
+}

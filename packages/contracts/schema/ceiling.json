@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ceiling",
+  "type": "string",
+  "enum": [
+    "plan",
+    "acceptEdits",
+    "auto",
+    "bypassPermissions"
+  ],
+  "description": "The highest mode a client session, and anything created through it, may use: plan, acceptEdits, auto or bypassPermissions."
+}

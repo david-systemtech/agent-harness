@@ -1,0 +1,256 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SessionCreatedPayload",
+  "type": "object",
+  "properties": {
+    "title": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^\\s*\\S(?:[\\s\\S]{0,198}\\S)?\\s*$",
+          "description": "A title a user gives a session: 1 to 200 characters once trimmed; white space around it is not counted, and it is stored trimmed."
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The user's title, trimmed; null for the fallback."
+    },
+    "tags": {
+      "maxItems": 64,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^\\s*[^\\s\\p{Cc}\\p{Cf}](?:[^\\p{Cc}\\p{Cf}]{0,38}[^\\s\\p{Cc}\\p{Cf}])?\\s*$",
+        "description": "A free-form tag: 1 to 40 characters once trimmed, no control or format (zero-width) characters; stored trimmed, unique per session ignoring case."
+      },
+      "description": "The tags, trimmed, unique ignoring case and sorted."
+    },
+    "groupId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+          "description": "A group's id: a version 4 UUID the creating client mints, kept in lowercase."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "workspace": {
+      "anyOf": [
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "directory"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)",
+                  "description": "The directory on the environment's machine."
+                }
+              },
+              "required": [
+                "kind",
+                "path"
+              ],
+              "description": "A directory the environment has; the harness never makes, moves or removes it outside a workspace root."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "worktree"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)",
+                  "description": "The worktree's directory, which the environment chose and made."
+                },
+                "repository": {
+                  "type": "string",
+                  "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)",
+                  "description": "The main checkout (or bare repository) the worktree was made from."
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The branch the worktree was made on; not read again when a run switches branch."
+                }
+              },
+              "required": [
+                "kind",
+                "path",
+                "repository",
+                "branch"
+              ],
+              "description": "A git worktree the environment made from a repository it has."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "scratch"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)",
+                  "description": "The scratch directory, under the data directory's scratch root."
+                }
+              },
+              "required": [
+                "kind",
+                "path"
+              ],
+              "description": "A scratch directory the environment made for the session that asked for it."
+            }
+          ]
+        },
+        {
+          "description": "A workspace of a kind a later environment records: read as a directory at its path.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!(?:directory|worktree|scratch)$)",
+              "description": "A kind this version does not know."
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)",
+              "description": "An absolute path as the environment's operating system writes it: from /, a drive (C:\\) or a share (\\\\)."
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ]
+        }
+      ],
+      "description": "Where a session's code lives on its environment: a directory, a worktree or a scratch directory, each with an absolute path. A kind a client does not know reads as a directory at its path."
+    },
+    "repositoryIdentity": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "account": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The account asked for, if any; the adapter workstream (#119) validates it."
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The model asked for, if any; the adapter workstream (#119) validates it."
+    },
+    "mode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "plan",
+            "acceptEdits",
+            "auto",
+            "bypassPermissions"
+          ],
+          "description": "What an agent may do without asking during a run, in the order ceilings use: plan < acceptEdits < auto < bypassPermissions. Claude's default and dontAsk are never used."
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The mode asked for, if any; clamped at each run, and changed by session.mode.set."
+    },
+    "origin": {
+      "description": "Where the session came from when no client asked for it: import, with what the import linked and read; absent for a session a command created.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "import"
+            },
+            "accountId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "The winning adopted Account used for continuation and credentials."
+            },
+            "sourceDirectory": {
+              "description": "Retained import source for lazy history and first store hydration. When omitted, use the Account directory; never use this directory for authentication.",
+              "type": "string",
+              "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)"
+            },
+            "providerSessionId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The provider's own id for the session: what the import is deduplicated by, and what a run resumes."
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+              "description": "When the provider session began, as the listing gives it: the summary's createdAt."
+            },
+            "lastActivityAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+              "description": "When the provider session was last written, as the listing gives it: the summary's lastActivityAt."
+            }
+          },
+          "required": [
+            "kind",
+            "accountId",
+            "providerSessionId",
+            "createdAt",
+            "lastActivityAt"
+          ],
+          "description": "The Carry over import made the session from a provider session in an adopted account's directory."
+        }
+      ]
+    }
+  },
+  "required": [
+    "title",
+    "tags",
+    "groupId",
+    "workspace",
+    "repositoryIdentity",
+    "account",
+    "model",
+    "mode"
+  ],
+  "description": "session.created: a session was created; its createdAt is the event's occurredAt, or an imported session's origin.createdAt, whose lastActivityAt is its origin's too."
+}

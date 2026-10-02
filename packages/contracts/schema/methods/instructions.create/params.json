@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "instructions.create params",
+  "type": "object",
+  "properties": {
+    "commandId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+      "description": "The client-generated UUID every command takes; a retry with the same id applies once."
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+      "description": "An owned instruction's id: a version 4 UUID the creating client mints, kept in lowercase."
+    },
+    "catalogueId": {
+      "description": "The catalogue entry to copy, with no title and no body: a tick.",
+      "type": "string",
+      "maxLength": 100,
+      "pattern": "^(?:setup|coding|working|custom)\\.[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "title": {
+      "description": "With body and no catalogueId: the title of one written here (Custom).",
+      "type": "string",
+      "pattern": "^\\s*[^\\s\\p{Cc}\\p{Cf}](?:(?:[^\\p{Cc}\\p{Cf}]|[\\t\\n\\v\\f\\r]){0,118}[^\\s\\p{Cc}\\p{Cf}])?\\s*$"
+    },
+    "body": {
+      "description": "With title and no catalogueId: the body of one written here (Custom).",
+      "type": "string",
+      "maxLength": 20000
+    },
+    "origin": {
+      "description": "With explicit title and body: the origin remembered by an owned copy, kept at its original version when copying between environments; omitted for Custom.",
+      "type": "object",
+      "properties": {
+        "catalogueId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The catalogue entry it was copied from."
+        },
+        "version": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "description": "The entry's version it holds."
+        }
+      },
+      "required": [
+        "catalogueId",
+        "version"
+      ]
+    },
+    "scope": {
+      "description": "The accounts it reaches; preset all.",
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "all",
+          "description": "Every account on the environment, those added later included."
+        },
+        {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "An account's id on its environment: a version 4 UUID the environment mints when it adopts or adds the account; an account carried over from configuration keeps the id it was configured with."
+          },
+          "description": "The accounts named, each once; an account removed since reaches nothing."
+        }
+      ]
+    },
+    "enabled": {
+      "description": "Whether runs are handed it; preset true.",
+      "type": "boolean"
+    },
+    "position": {
+      "description": "Its place in the list; preset after the last.",
+      "type": "string",
+      "pattern": "^[abcdefghijklmnopqrstuvwxyz]*[bcdefghijklmnopqrstuvwxyz]$"
+    }
+  },
+  "required": [
+    "commandId",
+    "id"
+  ],
+  "description": "A Custom instruction's title and body, or the catalogue entry a tick copies; then its scope, whether it is enabled and its position.",
+  "oneOf": [
+    {
+      "required": [
+        "title",
+        "body"
+      ],
+      "properties": {
+        "title": true,
+        "body": true,
+        "catalogueId": false
+      }
+    },
+    {
+      "required": [
+        "catalogueId"
+      ],
+      "properties": {
+        "catalogueId": true,
+        "title": false,
+        "body": false,
+        "origin": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "keyManagers.references.browse params",
+  "type": "object",
+  "properties": {
+    "connectionId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+      "description": "A key-manager connection's id: a version 4 UUID the adding client mints, kept in lowercase."
+    },
+    "mount": {
+      "description": "The provider location: an OpenBao KV mount, a Bitwarden project id or name, or a Doppler project. Absent to list OpenBao mounts or Bitwarden projects, or use Doppler's token scope.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^/\\p{Cc}]+(?:\\/[^/\\p{Cc}]+)*$"
+    },
+    "path": {
+      "description": "The path under an OpenBao mount, or a Doppler config name; absent for the mount's top or the token's scope. Bitwarden lists keys in the selected project.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^/\\p{Cc}]+(?:\\/[^/\\p{Cc}]+)*$"
+    },
+    "vault": {
+      "description": "The vault whose items are listed, by name or id; absent to list the vaults. 1Password only.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\p{Cc}]+$"
+    },
+    "item": {
+      "description": "The item in the vault whose fields are listed, by name or id; absent to list the vault's items. 1Password only.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\p{Cc}]+$"
+    }
+  },
+  "required": [
+    "connectionId"
+  ]
+}

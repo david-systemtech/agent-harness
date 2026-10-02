@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SettledBy",
+  "type": "string",
+  "enum": [
+    "user",
+    "auto-idle",
+    "auto-merge",
+    "routine"
+  ],
+  "description": "Who settled a session: user, auto-idle (quiet past the idle span), auto-merge (its pull request merged), routine (it is a routine's firing that ended silent, so it delivered nothing and left the active list)."
+}

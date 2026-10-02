@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "providers.list result",
+  "type": "object",
+  "properties": {
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "A provider's id, as the environment's adapter registry keys it: lowercase letters, digits and hyphens (claude)."
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The provider's name as a client shows it: Claude."
+          },
+          "interactivePrompts": {
+            "type": "boolean",
+            "description": "A run can stop and ask a permission prompt or a question, answered from any client."
+          },
+          "partialMessages": {
+            "type": "boolean",
+            "description": "A run streams assistant.delta fragments; without it only the settled items arrive."
+          },
+          "providerQueue": {
+            "type": "boolean",
+            "description": "The provider holds messages sent during a turn; without it the environment holds them and starts the next run with them when the turn ends."
+          },
+          "withdraw": {
+            "type": "boolean",
+            "description": "The adapter can take back a queued message its provider holds, by id; messages the environment holds can always be withdrawn."
+          },
+          "steering": {
+            "type": "boolean",
+            "description": "The provider folds a queued message into the running turn at its next boundary; presupposes providerQueue."
+          },
+          "resume": {
+            "type": "boolean",
+            "description": "A session's next run resumes the provider's own session."
+          },
+          "fork": {
+            "type": "boolean",
+            "description": "A session can be forked, from its end or from a user message."
+          },
+          "rewind": {
+            "type": "boolean",
+            "description": "A session can be rewound to a user message."
+          },
+          "sessionListing": {
+            "type": "boolean",
+            "description": "The provider's sessions in an account's directory can be listed, and a listed session's history read."
+          },
+          "subagents": {
+            "type": "boolean",
+            "description": "A run delegates work to subagents and background tasks, reported by tasks.changed and stopped by runs.stopTask."
+          },
+          "subagentTranscripts": {
+            "type": "boolean",
+            "description": "A subagent's own transcript can be read on demand."
+          },
+          "titleRead": {
+            "type": "boolean",
+            "description": "The provider generates a session title the environment can read."
+          },
+          "titleWrite": {
+            "type": "boolean",
+            "description": "A user title can be mirrored into the provider's own title field."
+          },
+          "transcriptDelete": {
+            "type": "boolean",
+            "description": "The provider's transcript of a session can be deleted when the session is purged."
+          },
+          "planUsage": {
+            "type": "boolean",
+            "description": "Plan usage can be read per window, with the account's identity."
+          },
+          "liveModels": {
+            "type": "boolean",
+            "description": "The provider's models are listed live; without it the catalogue is the adapter's static list."
+          },
+          "commands": {
+            "type": "boolean",
+            "description": "The provider's slash commands can be listed for an account and workspace without spending tokens."
+          },
+          "imageInput": {
+            "type": "boolean",
+            "description": "A message can carry image attachments."
+          },
+          "fileInput": {
+            "type": "boolean",
+            "description": "A message can carry file attachments."
+          },
+          "modeChange": {
+            "type": "boolean",
+            "description": "A live run's mode can be changed (permissions.mode.set); without it a new mode applies at the session's next run."
+          },
+          "containment": {
+            "type": "boolean",
+            "description": "The adapter enforces a run's containment level through its provider's sandbox (#133, #140); without it only off is available to the runs of its accounts."
+          },
+          "instructionChannel": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "system-prompt-append",
+                  "developer-instructions",
+                  "prompt",
+                  "none"
+                ],
+                "description": "How an adapter delivers standing instructions to its provider: system-prompt-append (Claude), developer-instructions (Codex), prompt (a local model), or none."
+              },
+              "maxCharacters": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The most characters the channel carries; null when it has no cap."
+              }
+            },
+            "required": [
+              "kind",
+              "maxCharacters"
+            ],
+            "description": "An adapter's instruction channel: its kind and its character cap."
+          },
+          "nativeProjectInstructions": {
+            "type": "boolean",
+            "description": "The provider loads a trusted repository's own instruction files itself (Claude: CLAUDE.md through its project settings); without it the composer hands it the repository's AGENTS.md, else CLAUDE.md, in the project layer."
+          },
+          "nativeSkillRoots": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                ".claude/skills",
+                ".agents/skills",
+                ".claude/commands"
+              ],
+              "description": "A root of a trusted repository a provider may load itself: .claude/skills or .agents/skills (its skills), or .claude/commands (its own commands). Found in the workspace directory and each parent up to the repository's root."
+            },
+            "description": "The roots of a trusted repository the provider loads skills or commands from itself (Claude: .claude/skills and .claude/commands, through its project settings): a member there is native, left out of the generation and hidden, when switched off, the provider's own way."
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "plan",
+                        "acceptEdits",
+                        "auto",
+                        "bypassPermissions"
+                      ],
+                      "description": "What an agent may do without asking during a run, in the order ceilings use: plan < acceptEdits < auto < bypassPermissions. Claude's default and dontAsk are never used."
+                    },
+                    "available": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "reason": {
+                      "type": "null",
+                      "description": "Null: the mode is available."
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "available",
+                    "reason"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "plan",
+                        "acceptEdits",
+                        "auto",
+                        "bypassPermissions"
+                      ],
+                      "description": "What an agent may do without asking during a run, in the order ceilings use: plan < acceptEdits < auto < bypassPermissions. Claude's default and dontAsk are never used."
+                    },
+                    "available": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Why the account cannot use the mode, for people."
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "available",
+                    "reason"
+                  ]
+                }
+              ],
+              "description": "Whether an account can use a mode and, when it cannot, why."
+            },
+            "description": "The modes the adapter maps onto its provider (ADR 0006), each available or not with the reason; a run asking for an unavailable or unlisted mode gets the next lower available one."
+          }
+        },
+        "required": [
+          "provider",
+          "displayName",
+          "interactivePrompts",
+          "partialMessages",
+          "providerQueue",
+          "withdraw",
+          "steering",
+          "resume",
+          "fork",
+          "rewind",
+          "sessionListing",
+          "subagents",
+          "subagentTranscripts",
+          "titleRead",
+          "titleWrite",
+          "transcriptDelete",
+          "planUsage",
+          "liveModels",
+          "commands",
+          "imageInput",
+          "fileInput",
+          "modeChange",
+          "containment",
+          "instructionChannel",
+          "nativeProjectInstructions",
+          "nativeSkillRoots",
+          "modes"
+        ],
+        "description": "An adapter's capabilities descriptor: its provider, a flag per optional power, its instruction channel, whether it loads a trusted repository's own instructions itself and which of its skill roots, and its modes."
+      },
+      "description": "One descriptor per adapter the environment holds, by provider."
+    }
+  },
+  "required": [
+    "providers"
+  ]
+}

@@ -1,0 +1,153 @@
+# The agent-harness environment in a container (ADR 0007, ADR 0025; #141,
+# #349), for a machine that runs the environment under Docker or Podman
+# rather than as a user service. Each release publishes this file with its
+# own image as the default below.
+#
+# The release's image is public at ghcr.io/david-systemtech/agent-harness;
+# no registry login is required. Start it with:
+#
+#   docker compose up -d
+#   docker compose logs environment
+#
+# The first start, which creates the environment on fresh volumes, names it
+# AGENT_HARNESS_NAME (else the host's name) and puts it on the release
+# channel AGENT_HARNESS_CHANNEL, stable or beta (else stable), as Add a
+# machine's snippet sets them (#846):
+#
+#   AGENT_HARNESS_CHANNEL=beta AGENT_HARNESS_NAME=build-box docker compose up -d
+#
+# A later start keeps the name and channel the environment has, whatever the
+# two say: change either on the machine's card once paired.
+#
+# Until a client first pairs with it, the environment prints a pairing link,
+# QR and code to its log at each start: pair from there, or mint another with
+#
+#   docker compose exec environment agent-harness pair --preset own-client --data-dir /data
+#
+# Remote pairing on Linux: install Tailscale on the host, sign it in, and
+# keep it running in kernel TUN mode (the default), with a tailscale0
+# interface. This service shares the host network, so the environment
+# discovers that interface's IPv4 address even though the image has no
+# tailscale CLI. No daemon socket, host CLI or extra capability is mounted.
+# Join the client machine to the same tailnet and allow TCP port 7433 in
+# the tailnet policy and host firewall. Pair using the IP link and code in
+# the log. Loopback remains available; LAN binding stays off unless enabled
+# in the environment's settings. Userspace networking without tailscale0
+# and Docker Desktop's virtual host network do not support this path.
+#
+# A container never updates itself (ADR 0007). The host-side updater,
+# host-updater.sh from the same release, carries out the environment's update
+# plan from the host: it pulls the new image, stops the container, snapshots
+# its database, recreates it and rolls it back on failure, writing the image
+# it moves to into the .env file beside this one as AGENT_HARNESS_IMAGE.
+# Installing it, with cron or a systemd timer, is in its documentation:
+# https://github.com/david-systemtech/agent-harness/blob/main/docs/host-updater.md
+#
+# From a checkout, where no release wrote its image in, build the image and
+# name it:
+#
+#   docker build -t agent-harness .
+#   AGENT_HARNESS_IMAGE=agent-harness docker compose -f scripts/compose.yaml up -d
+#
+# The environment runs as the image's non-root user, uid and gid 10001:
+# `serve` refuses root, in a container as anywhere else (ADR 0006), so this
+# file never runs it as root, sets neither IS_SANDBOX nor
+# CLAUDE_CODE_BUBBLEWRAP, and asks for no privilege. Its two volumes are
+# named volumes, which Docker creates owned by that user, since the image's
+# /data and /work are. To mount a directory of the host instead, give it to
+# the user first: sudo chown -R 10001:10001 <directory>.
+# Opt in to the dedicated headless browser with:
+#
+#   docker compose --profile browser up -d
+#
+# Set browser.headless.endpoint to http://127.0.0.1:9222 in the environment's
+# settings. The environment uses the host network, so that loopback port
+# reaches the service too. This endpoint belongs only to this environment:
+# connecting clears every existing target and context.
+#
+# LinuxServer's maintained Debian Chromium image is pinned by digest, which
+# Renovate updates. Its desktop entrypoint is replaced: only Chromium under
+# new headless and the small port forwarder run. Chromium's new headless CDP
+# listener binds loopback inside the container; the forwarder exposes that
+# listener to Docker's loopback-only publication. It exits when Browser.close
+# ends Chromium, so restart brings a fresh browser back. The browser runs as
+# an unprivileged user within the container's boundary; it asks for no added
+# capabilities and uses no Chromium sandbox inside that boundary.
+name: agent-harness
+services:
+  environment:
+    # AGENT_HARNESS_IMAGE when set, as the host-side updater sets it; else
+    # the image of the release that published this file, which the release
+    # workflow writes in place of the default's placeholder tag, unreleased
+    # (#358).
+    image: ${AGENT_HARNESS_IMAGE:-git.systemtech.dev:5526/david/agent-harness:unreleased}
+    restart: unless-stopped
+    # The image's user, by its uid and gid: the root refusal lets it start.
+    user: "10001:10001"
+    # The environment binds loopback and the host's tailscale0 IPv4 address,
+    # never the wildcard address (env spec, "Binding and discovery"), so it
+    # shares the Linux host's network instead of publishing a port.
+    network_mode: host
+    environment:
+      # Declares the container (#133): the containment report names it as the
+      # outer boundary, updates are managed outside it, and it prints its
+      # pairing to its log until a client first pairs (#349).
+      AGENT_HARNESS_CONTAINER: "1"
+      # A new environment's name and release channel, which only its first
+      # start reads (#846); `serve` reads a blank one, as one left unset
+      # here, as not given.
+      AGENT_HARNESS_NAME: ${AGENT_HARNESS_NAME:-}
+      AGENT_HARNESS_CHANNEL: ${AGENT_HARNESS_CHANNEL:-}
+    volumes:
+      - data:/data
+      - work:/work
+    # SIGTERM starts the drain, which waits up to 30 minutes for the runs
+    # under way (env spec, "Lifecycle"); a stop that kills sooner cuts them.
+    # The host-side updater's stop waits it out too.
+    stop_grace_period: 31m
+  browser:
+    image: docker.io/linuxserver/chromium:latest@sha256:2d32e1b2b28aa92973aa0f58c433c0b045db6e1224d7001eeaa9cde1a474ce13
+    profiles: ["browser"]
+    restart: unless-stopped
+    user: "10001:10001"
+    init: true
+    mem_limit: 1g
+    environment:
+      HOME: /tmp
+    ports:
+      - "127.0.0.1:9222:9222"
+    # The upstream image includes Python; overriding its entrypoint starts no desktop.
+    entrypoint: ["/usr/bin/python3", "-c"]
+    command:
+      - |
+        import asyncio, sys
+
+        async def copy(reader, writer):
+            try:
+                while data := await reader.read(65536):
+                    writer.write(data)
+                    await writer.drain()
+            finally:
+                writer.close()
+
+        async def forward(reader, writer):
+            try:
+                upstream, outgoing = await asyncio.open_connection('127.0.0.1', 9223)
+                await asyncio.gather(copy(reader, outgoing), copy(upstream, writer))
+            except (OSError, ConnectionError):
+                writer.close()
+
+        async def main():
+            browser = await asyncio.create_subprocess_exec(
+                '/usr/lib/chromium/chromium', '--headless=new', '--no-sandbox',
+                '--remote-debugging-port=9223', '--user-data-dir=/tmp/headless-profile',
+                '--no-first-run', '--no-default-browser-check', 'about:blank')
+            server = await asyncio.start_server(forward, '0.0.0.0', 9222)
+            async with server:
+                return await browser.wait()
+
+        sys.exit(asyncio.run(main()))
+
+volumes:
+  data:
+  work:

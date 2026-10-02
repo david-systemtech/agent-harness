@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KeyManagerMoveItemKind",
+  "type": "string",
+  "enum": [
+    "forge-account",
+    "endpoint",
+    "bank"
+  ],
+  "description": "What holds a stored value Move can take: forge-account (a forge account's pasted token), endpoint (a webhook endpoint's pasted secret) or bank (a bank's fallback token)."
+}

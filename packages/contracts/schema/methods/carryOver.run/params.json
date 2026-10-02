@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "carryOver.run params",
+  "type": "object",
+  "properties": {
+    "commandId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+      "description": "The client-generated UUID every command takes; a retry with the same id applies once."
+    },
+    "accountId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "The adopted account whose directory to carry over."
+    },
+    "dryRun": {
+      "type": "boolean",
+      "description": "Answer the report of what an import would do, and write nothing."
+    },
+    "skills": {
+      "type": "boolean",
+      "description": "The card's skills tick: run skills.carryOver with the same dry run, copying the directory's skills and commands into the own directory, its report joining this one's."
+    }
+  },
+  "required": [
+    "commandId",
+    "accountId",
+    "dryRun",
+    "skills"
+  ]
+}

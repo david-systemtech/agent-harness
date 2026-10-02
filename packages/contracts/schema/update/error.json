@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UpdateError",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "const": "unauthorized"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data"
+      ],
+      "description": "The client session's token is missing, invalid, foreign or expired."
+    },
+    {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "const": "forbidden"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "read",
+                "sessions:write",
+                "runs:drive",
+                "terminal",
+                "admin"
+              ],
+              "description": "The scope the method requires; with reason scope, the requested pairing scope the caller does not hold."
+            },
+            "reason": {
+              "description": "Present when the method's scope is held and the call is refused all the same: ceiling (it would grant a ceiling above the caller's own: a pairing, or raising another client session), scope (a pairing would grant a scope the caller does not hold, named in data.scope), local (only a local client session may ask it: an artefact path on the environment's machine, the desktop's stage), program (a program client session may not ask it: the known-environments report, whose text reaches every run) or addressed (only the client session a call is addressed to may answer it: client.answer).",
+              "type": "string",
+              "enum": [
+                "ceiling",
+                "scope",
+                "local",
+                "program",
+                "addressed"
+              ]
+            },
+            "ceiling": {
+              "description": "With reason ceiling: the caller's own ceiling, the highest it may grant.",
+              "type": "string",
+              "enum": [
+                "plan",
+                "acceptEdits",
+                "auto",
+                "bypassPermissions"
+              ]
+            }
+          },
+          "required": [
+            "scope"
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data"
+      ],
+      "description": "The client session lacks the scope the method requires, named in data.scope; or, with data.reason ceiling, the call would grant a ceiling above the caller's own, named in data.ceiling; or, with data.reason scope, a pairing would grant a scope the caller does not hold, named in data.scope; or, with data.reason local, only a local client session may ask it; or, with data.reason program, a program client session may not; or, with data.reason addressed, the call is addressed to another client session."
+    },
+    {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "const": "invalid_params"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "number"
+                      ]
+                    }
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "path",
+                  "message"
+                ],
+                "additionalProperties": {},
+                "description": "One schema issue: a code, the path to the offending value and a message."
+              }
+            }
+          },
+          "required": [
+            "issues"
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data"
+      ],
+      "description": "The params or the frame did not match the schema; data.issues lists the schema's issues."
+    },
+    {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "const": "not_found"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data"
+      ],
+      "description": "The method's target does not exist."
+    },
+    {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "const": "conflict"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "enum": [
+                "pinned",
+                "current",
+                "schema",
+                "launcher",
+                "in_progress",
+                "no_release_access",
+                "unreachable",
+                "manifest",
+                "artefact",
+                "install",
+                "no_launcher",
+                "not_outside",
+                "not_ready"
+              ],
+              "description": "Why an update or a pin was refused in conflict: pinned (another version is pinned), current (that version runs already, or nothing newer is published), schema (its database schema is below the database's), launcher (it needs a newer launcher than the running one), in_progress (an update is staging, draining or switching), no_release_access (no forge account for the release origin, or its token was refused), unreachable (the forge did not answer, or failed: ask again), manifest (the release's manifest is missing or not its schema), artefact (this platform's artefact did not download, does not match its size and SHA-256 in the manifest, or does not unpack), install (the launcher refused to install the version: data.launcherReason says why), no_launcher (no launcher runs the environment to switch its version: a foreground serve; or, in a container, an artefact asked for, where the host-side updater takes updates by version), not_outside (updates.begin under a launcher or outside a container, whose updates no host-side updater carries out) or not_ready (updates.begin naming an update that is not the ready one: none is pending, another is, or it still waits for idle, the cap or a request)."
+            },
+            "launcherReason": {
+              "description": "With reason install: why the launcher refused to install the version.",
+              "type": "string",
+              "enum": [
+                "launcher-protocol",
+                "incomplete",
+                "preflight",
+                "disk",
+                "io"
+              ]
+            }
+          },
+          "required": [
+            "reason"
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data"
+      ],
+      "description": "The update was refused for the environment's state; data.reason says why, and with reason install data.launcherReason says why the launcher refused."
+    },
+    {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "const": "unavailable"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "readiness": {
+              "type": "string",
+              "enum": [
+                "starting",
+                "draining"
+              ],
+              "description": "Why the environment cannot answer: it is not ready yet, or it is draining."
+            }
+          },
+          "required": [
+            "readiness"
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data"
+      ],
+      "description": "The environment is starting or draining; data.readiness says which."
+    },
+    {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "const": "internal"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "data"
+      ],
+      "description": "The environment failed; nothing the client sent is at fault."
+    }
+  ],
+  "description": "Why an update asked for over HTTP was refused."
+}

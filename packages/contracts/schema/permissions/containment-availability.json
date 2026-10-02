@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContainmentAvailability",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "off",
+            "workspace",
+            "workspace-no-network"
+          ],
+          "description": "Where a run may reach: off (nothing applied), workspace (writes only inside the workspace), workspace-no-network (and no network for the model's commands and fetches)."
+        },
+        "available": {
+          "type": "boolean",
+          "const": true
+        },
+        "reason": {
+          "type": "null",
+          "description": "Null: the level can be enforced here."
+        },
+        "cause": {
+          "type": "null",
+          "description": "Null: the level can be enforced here."
+        }
+      },
+      "required": [
+        "level",
+        "available",
+        "reason",
+        "cause"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "off",
+            "workspace",
+            "workspace-no-network"
+          ],
+          "description": "Where a run may reach: off (nothing applied), workspace (writes only inside the workspace), workspace-no-network (and no network for the model's commands and fetches)."
+        },
+        "available": {
+          "type": "boolean",
+          "const": false
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why the level cannot be enforced here, for people."
+        },
+        "cause": {
+          "type": "string",
+          "enum": [
+            "binary_missing",
+            "userns_blocked",
+            "apparmor",
+            "seccomp",
+            "socat_missing",
+            "failed",
+            "platform",
+            "adapter",
+            "probe_failed",
+            "not_probed"
+          ],
+          "description": "Why a containment level cannot be enforced. First the seven the probe finds: binary_missing (bwrap or sandbox-exec), userns_blocked (the kernel), apparmor, seccomp, socat_missing, failed (the mechanism failed otherwise), platform (none on it). Then adapter (the adapter does not enforce containment), probe_failed (the probe itself failed), not_probed (the probe not run)."
+        }
+      },
+      "required": [
+        "level",
+        "available",
+        "reason",
+        "cause"
+      ]
+    }
+  ],
+  "description": "Whether this environment can enforce a containment level and, when it cannot, why, for people and as a cause."
+}

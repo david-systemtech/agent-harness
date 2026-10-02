@@ -1,0 +1,372 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EnvironmentNoticeType",
+  "anyOf": [
+    {
+      "type": "string",
+      "const": "environment.started",
+      "description": "Startup finished."
+    },
+    {
+      "type": "string",
+      "const": "environment.updated",
+      "description": "A new harness version now runs."
+    },
+    {
+      "type": "string",
+      "const": "environment.draining",
+      "description": "New runs are refused before a restart."
+    },
+    {
+      "type": "string",
+      "const": "environment.update-pending",
+      "description": "An update waits for idle, the cap or a request."
+    },
+    {
+      "type": "string",
+      "const": "environment.update-started",
+      "description": "An update began its drain."
+    },
+    {
+      "type": "string",
+      "const": "environment.update-failed",
+      "description": "An update did not take, and the version it went from runs."
+    },
+    {
+      "type": "string",
+      "const": "environment.update-cancelled",
+      "description": "A pending update was withdrawn."
+    },
+    {
+      "type": "string",
+      "const": "environment.renamed",
+      "description": "The environment was renamed; a client redraws its badge."
+    },
+    {
+      "type": "string",
+      "const": "environment.icon-set",
+      "description": "The environment took another icon; a client redraws its badge."
+    },
+    {
+      "type": "string",
+      "const": "environment.colour-set",
+      "description": "The environment took another colour; a client redraws its badge."
+    },
+    {
+      "type": "string",
+      "const": "environment.known-environments-updated",
+      "description": "The union of the other environments client sessions report changed; a client reads instructions.list and instructions.preview again."
+    },
+    {
+      "type": "string",
+      "const": "account.updated",
+      "description": "An account changed; a client refreshes what it caches of the accounts."
+    },
+    {
+      "type": "string",
+      "const": "signin.updated",
+      "description": "The sign-in changed state: the verification URL, the end."
+    },
+    {
+      "type": "string",
+      "const": "signin.executable-chosen",
+      "description": "Which executable sign-ins run, recorded once."
+    },
+    {
+      "type": "string",
+      "const": "prompt.parked",
+      "description": "A run waits for a person's answer."
+    },
+    {
+      "type": "string",
+      "const": "prompt.resolved",
+      "description": "A parked prompt was answered."
+    },
+    {
+      "type": "string",
+      "const": "usage.updated",
+      "description": "An account's plan-usage reading changed; a client refreshes what it caches of the readings."
+    },
+    {
+      "type": "string",
+      "const": "denylist.updated",
+      "description": "The denylist changed; a client reads permissions.denylist.get and permissions.settings.get again."
+    },
+    {
+      "type": "string",
+      "const": "review.updated",
+      "description": "The Unattended review changed; a client reads permissions.review.list again."
+    },
+    {
+      "type": "string",
+      "const": "forge.account.added",
+      "description": "A forge account was added; a client refreshes what it caches of the forge accounts."
+    },
+    {
+      "type": "string",
+      "const": "forge.account.updated",
+      "description": "A forge account's slug, aliases or credential changed; a client refreshes what it caches of the forge accounts."
+    },
+    {
+      "type": "string",
+      "const": "forge.account.primary-set",
+      "description": "A forge account became the primary forge; a client refreshes what it caches of the forge accounts."
+    },
+    {
+      "type": "string",
+      "const": "forge.account.verified",
+      "description": "A verification of a forge account found something changed; a client refreshes what it caches of the forge accounts."
+    },
+    {
+      "type": "string",
+      "const": "forge.account.capability-learned",
+      "description": "An operation showed whether a forge account can do something; a client refreshes what it caches of the forge accounts."
+    },
+    {
+      "type": "string",
+      "const": "forge.account.git-rejected",
+      "description": "git refused a forge account's credential; a client refreshes what it caches of the forge accounts."
+    },
+    {
+      "type": "string",
+      "const": "forge.account.removed",
+      "description": "A forge account was removed; a client refreshes what it caches of the forge accounts."
+    },
+    {
+      "type": "string",
+      "const": "forge.origin-missing",
+      "description": "A harness operation was refused on an origin no forge account covers; a client refreshes what it caches of the forge accounts."
+    },
+    {
+      "type": "string",
+      "const": "bank.added",
+      "description": "A bank was registered, created or joined; a client refreshes what it caches of the banks."
+    },
+    {
+      "type": "string",
+      "const": "bank.review-held",
+      "description": "A validated bank change was held for review as an immutable snapshot."
+    },
+    {
+      "type": "string",
+      "const": "bank.draft-queued",
+      "description": "A session queued a validated draft or retirement; clients refresh banks.drafts.list."
+    },
+    {
+      "type": "string",
+      "const": "bank.drafts-consumed",
+      "description": "A landing consumed its queue snapshot; clients refresh banks.drafts.list."
+    },
+    {
+      "type": "string",
+      "const": "bank.updated",
+      "description": "A bank's registry settings, sync status or what its BANK.md names changed; a client refreshes what it caches of the banks."
+    },
+    {
+      "type": "string",
+      "const": "bank.pinned",
+      "description": "A session pinned or unpinned a folder of a bank."
+    },
+    {
+      "type": "string",
+      "const": "bank.forgotten",
+      "description": "A bank left the registry; a client refreshes what it caches of the banks."
+    },
+    {
+      "type": "string",
+      "const": "bank.synced",
+      "description": "A sync moved a bank's checkout to a new head; a client refreshes what it caches of the banks."
+    },
+    {
+      "type": "string",
+      "const": "bank.verified",
+      "description": "A verification found a bank's status changed; a client refreshes what it caches of the banks."
+    },
+    {
+      "type": "string",
+      "const": "bank.landed",
+      "description": "Drafts landed on a bank's main; a client refreshes what it caches of the banks."
+    },
+    {
+      "type": "string",
+      "const": "bank.landing-failed",
+      "description": "A landing on a bank failed; a client refreshes what it caches of the banks."
+    },
+    {
+      "type": "string",
+      "const": "bank.awaiting-review",
+      "description": "A landing on a bank waits for an owner's review in a pull request; no bank's record changes."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.connection.added",
+      "description": "A key-manager connection was added; a client refreshes what it caches of the key-manager connections."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.connection.signed-in",
+      "description": "A key-manager connection's sign-in ended; a client refreshes what it caches of the key-manager connections."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.connection.signed-out",
+      "description": "A key-manager connection was signed out; a client refreshes what it caches of the key-manager connections."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.connection.updated",
+      "description": "A key-manager connection's label, address, CA or token role changed; a client refreshes what it caches of the key-manager connections."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.connection.policies-set",
+      "description": "Which of a key-manager connection's policies runs receive was ticked; a client refreshes what it caches of the key-manager connections."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.connection.base-path-set",
+      "description": "Where Move keeps the harness's secrets on a key-manager connection was set; a client refreshes what it caches of the key-manager connections."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.connection.injected-set",
+      "description": "A key-manager connection became the one of its provider whose variables runs receive; a client refreshes what it caches of the key-manager connections."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.connection.verified",
+      "description": "A verification of a key-manager connection found something changed; a client refreshes what it caches of the key-manager connections."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.connection.removed",
+      "description": "A key-manager connection was removed; a client refreshes what it caches of the key-manager connections."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.moved",
+      "description": "An item's stored value was moved into a key manager."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.stored-value-deleted",
+      "description": "A stored value a move left behind was deleted; a client refreshes what it caches of the items to move."
+    },
+    {
+      "type": "string",
+      "const": "key-manager.value-copied",
+      "description": "An item's stored value was answered once to a client session, to paste at a target the login cannot write."
+    },
+    {
+      "type": "string",
+      "const": "routine.updated",
+      "description": "A routine changed; a client refreshes its routines list."
+    },
+    {
+      "type": "string",
+      "const": "routine.delivered",
+      "description": "A routine's result, for every connected client."
+    },
+    {
+      "type": "string",
+      "const": "routine.delivery-failed",
+      "description": "A routine's result could not be delivered to its webhook."
+    },
+    {
+      "type": "string",
+      "const": "routine.endpoint-set",
+      "description": "A webhook endpoint was made or replaced; a client refreshes what it caches of the webhook endpoints."
+    },
+    {
+      "type": "string",
+      "const": "routine.endpoint-removed",
+      "description": "A webhook endpoint was removed; a client refreshes what it caches of the webhook endpoints."
+    },
+    {
+      "type": "string",
+      "const": "settings.changed",
+      "description": "Settings changed, with every settings.updated; a client refreshes what it caches of the settings."
+    },
+    {
+      "type": "string",
+      "const": "setup.result-changed",
+      "description": "A Set up step's result changed in anything but when it was checked; a client replaces that step's result in what the snapshot's setup gave it."
+    },
+    {
+      "type": "string",
+      "const": "skills.updated",
+      "description": "The skill set changed; a client reads skills.get again."
+    },
+    {
+      "type": "string",
+      "const": "trust.updated",
+      "description": "A trust decision was recorded or revoked; a client reads trust.get and trust.list again."
+    },
+    {
+      "type": "string",
+      "const": "instructions.updated",
+      "description": "An owned instruction changed; a client reads instructions.list and instructions.preview again."
+    },
+    {
+      "type": "string",
+      "const": "tools.updated",
+      "description": "The Managed tools registry's notice: a probe, or a latest version fetched, changed rows; a client refreshes what it caches of tools.list."
+    },
+    {
+      "type": "string",
+      "const": "tool.run-started",
+      "description": "A tool's install or update began in a tool terminal."
+    },
+    {
+      "type": "string",
+      "const": "tool.run-finished",
+      "description": "A tool's install or update in a tool terminal ended, with its exit code and verification."
+    },
+    {
+      "type": "string",
+      "const": "extension.seen",
+      "description": "An unpaired extension opened its socket to the listener; the Browser card ticks Load."
+    },
+    {
+      "type": "string",
+      "const": "carry-over.imported",
+      "description": "Carry over's notice: an import of an adopted account's directory ended, with its counts and what failed; a client reads carryOver.inventory again."
+    },
+    {
+      "type": "string",
+      "const": "carry-over.memory-assigned",
+      "description": "A memory folder no transcript maps was assigned to a repository and copied; a client reads carryOver.inventory again."
+    },
+    {
+      "type": "string",
+      "const": "state-import.finished",
+      "description": "A state import ended, with its report and what failed; a client reads stateImport.detect again."
+    },
+    {
+      "type": "string",
+      "const": "checks.changed",
+      "description": "A Workspace directory's check command was set, changed or cleared; a client reads checks.get again for its sessions in that directory."
+    },
+    {
+      "type": "string",
+      "const": "checks.failures-reset",
+      "description": "Clear stale failure-send offers in every Session of this canonical Workspace directory; a check passed or a manual check began."
+    },
+    {
+      "type": "string",
+      "const": "workspace.kept",
+      "description": "A worktree stayed, unlocked, when the last session naming it was purged; the client raises a notice naming it and why."
+    },
+    {
+      "type": "string",
+      "const": "chrome.updated",
+      "description": "A paired Chrome was paired, renamed or unpaired, connected, disconnected or reported another extension version; a client reads browser.chromes.list and browser.status again."
+    },
+    {
+      "type": "string",
+      "const": "client.call",
+      "description": "A call addressed to one client session, which answers it with client.answer before its deadline; every other client leaves it alone."
+    }
+  ],
+  "description": "An environment notice's event type, each type described by what it tells a client."
+}

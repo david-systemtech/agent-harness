@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ManagedToolStatus",
+  "type": "string",
+  "enum": [
+    "current",
+    "update-available",
+    "below-minimum",
+    "not-installed",
+    "method-unknown"
+  ],
+  "description": "A managed tool's status: current; update-available (its version is behind the latest known, a badge only: it raises no notice and fails no check); below-minimum (its version is under the tool's minimum, or could not be read against one); not-installed; method-unknown (installed, but how could not be told). Below the minimum is said before method-unknown, and both before update-available."
+}

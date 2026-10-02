@@ -1,0 +1,17 @@
+# The agent-harness environment. Written by "agent-harness service install";
+# "agent-harness service uninstall" removes it.
+[Unit]
+Description=agent-harness environment
+
+[Service]
+Type=simple
+ExecStart=/bin/sh /home/david/.local/state/agent-harness/launcher-entry.sh
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=31min
+StandardOutput=append:/home/david/.local/state/agent-harness/logs/service.log
+StandardError=append:/home/david/.local/state/agent-harness/logs/service.log
+
+[Install]
+WantedBy=default.target

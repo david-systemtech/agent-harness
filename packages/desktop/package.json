@@ -1,0 +1,26 @@
+{
+  "name": "@agent-harness/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "pnpm --filter @agent-harness/gui build && tsc -b && vite build",
+    "build-desktop": "tsx --conditions=@agent-harness/source scripts/build-desktop.ts",
+    "start": "electron .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agent-harness/client-runtime": "workspace:*",
+    "@agent-harness/contracts": "workspace:*",
+    "@agent-harness/gui": "workspace:*",
+    "@agent-harness/theme": "workspace:*",
+    "jsqr": "1.4.0"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3",
+    "uqr": "^0.1.3",
+    "vite": "8.3.0"
+  }
+}

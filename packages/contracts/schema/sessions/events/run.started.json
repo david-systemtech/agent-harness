@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunStartedPayload",
+  "type": "object",
+  "properties": {
+    "runId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+      "description": "A run's id: a version 4 UUID the environment mints when the run starts or is adopted."
+    },
+    "accountId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The account the run is billed and authenticated through."
+    },
+    "identity": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "description": "A provider's id, as the environment's adapter registry keys it: lowercase letters, digits and hyphens (claude)."
+            },
+            "email": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The login's email, as the provider's status reports it."
+            },
+            "organisation": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The organisation the login belongs to, when the provider reports one."
+            }
+          },
+          "required": [
+            "provider",
+            "email",
+            "organisation"
+          ],
+          "description": "Who an account signed in as: the provider, the email and the organisation when present; one account per identity per environment."
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Who the account is signed in as, when its status has been read."
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "effort": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The reasoning effort asked for; null for the model's own."
+    },
+    "mode": {
+      "type": "object",
+      "properties": {
+        "requested": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "plan",
+                "acceptEdits",
+                "auto",
+                "bypassPermissions"
+              ],
+              "description": "What an agent may do without asking during a run, in the order ceilings use: plan < acceptEdits < auto < bypassPermissions. Claude's default and dontAsk are never used."
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The mode asked for, by the command or the session; null when neither names one, so a default applied."
+        },
+        "effective": {
+          "type": "string",
+          "enum": [
+            "plan",
+            "acceptEdits",
+            "auto",
+            "bypassPermissions"
+          ],
+          "description": "The mode the run got, after the clamp to the client session's ceiling and the account's modes."
+        },
+        "clamped": {
+          "type": "boolean",
+          "description": "Whether the clamp lowered the mode asked for; run.policy.resolved says why."
+        }
+      },
+      "required": [
+        "requested",
+        "effective",
+        "clamped"
+      ],
+      "description": "A run's mode: requested, effective after the ceiling's clamp, and whether it was clamped; run.policy.resolved has the rest."
+    },
+    "workspace": {
+      "anyOf": [
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "directory"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)",
+                  "description": "The directory on the environment's machine."
+                }
+              },
+              "required": [
+                "kind",
+                "path"
+              ],
+              "description": "A directory the environment has; the harness never makes, moves or removes it outside a workspace root."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "worktree"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)",
+                  "description": "The worktree's directory, which the environment chose and made."
+                },
+                "repository": {
+                  "type": "string",
+                  "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)",
+                  "description": "The main checkout (or bare repository) the worktree was made from."
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The branch the worktree was made on; not read again when a run switches branch."
+                }
+              },
+              "required": [
+                "kind",
+                "path",
+                "repository",
+                "branch"
+              ],
+              "description": "A git worktree the environment made from a repository it has."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "scratch"
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)",
+                  "description": "The scratch directory, under the data directory's scratch root."
+                }
+              },
+              "required": [
+                "kind",
+                "path"
+              ],
+              "description": "A scratch directory the environment made for the session that asked for it."
+            }
+          ]
+        },
+        {
+          "description": "A workspace of a kind a later environment records: read as a directory at its path.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(?!(?:directory|worktree|scratch)$)",
+              "description": "A kind this version does not know."
+            },
+            "path": {
+              "type": "string",
+              "pattern": "^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\)",
+              "description": "An absolute path as the environment's operating system writes it: from /, a drive (C:\\) or a share (\\\\)."
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ]
+        }
+      ],
+      "description": "Where a session's code lives on its environment: a directory, a worktree or a scratch directory, each with an absolute path. A kind a client does not know reads as a directory at its path."
+    },
+    "origin": {
+      "type": "string",
+      "enum": [
+        "client",
+        "routine",
+        "completions",
+        "provider",
+        "update"
+      ],
+      "description": "Where a run came from: client (runs.start or runs.send, or the environment's queue after a client's run), routine, completions, provider (a turn the provider opened itself, adopted as a run), or update (the turn that continues a run an update cut, started as system:updates)."
+    },
+    "promptMessageId": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+          "description": "A user message's id: a version 4 UUID the environment mints when a client sends it, and the id the provider is handed."
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The message the run starts with; null for a run that starts with queued messages only."
+    },
+    "queuedMessageIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+        "description": "A user message's id: a version 4 UUID the environment mints when a client sends it, and the id the provider is handed."
+      },
+      "description": "Queued messages the run reads as its prompt, in order: the environment's queue, or what a provider-opened turn opened with."
+    },
+    "resumedFrom": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The provider's session id the run resumes; null for a fresh one."
+    },
+    "forkedFrom": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$",
+          "description": "A session's id: a version 4 UUID the creating client mints (never the provider's resume id), kept in lowercase."
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The session the run's session was forked from, on a fork's first run; else null."
+    }
+  },
+  "required": [
+    "runId",
+    "accountId",
+    "identity",
+    "model",
+    "effort",
+    "mode",
+    "workspace",
+    "origin",
+    "promptMessageId",
+    "queuedMessageIds",
+    "resumedFrom",
+    "forkedFrom"
+  ],
+  "description": "run.started: a run of the session started; its startedAt is the event's occurredAt."
+}

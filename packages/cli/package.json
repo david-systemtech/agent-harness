@@ -1,0 +1,21 @@
+{
+  "name": "agent-harness",
+  "version": "0.0.0",
+  "launcherProtocol": 1,
+  "private": true,
+  "type": "module",
+  "bin": {
+    "agent-harness": "./dist/main.js"
+  },
+  "scripts": {
+    "build-artefacts": "tsx --conditions=@agent-harness/source scripts/build-artefacts.ts",
+    "publish-release": "tsx --conditions=@agent-harness/source scripts/publish-release.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agent-harness/contracts": "workspace:*",
+    "@agent-harness/environment": "workspace:*",
+    "@agent-harness/tui": "workspace:*",
+    "uqr": "^0.1.3"
+  }
+}

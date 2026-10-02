@@ -1,0 +1,104 @@
+import { z } from "zod";
+import { EnvironmentColour } from "./environment-colours.js";
+import { EnvironmentIcon } from "./environment-look.js";
+import { CapabilityFlags, ProtocolVersion } from "./flags.js";
+import { EnvironmentId } from "./primitives.js";
+import { PRODUCT_NAME } from "./product.js";
+
+/**
+ * Whether an environment accepts work (the env spec's readiness; not a
+ * skill's readiness, which the glossary's Readiness names): `starting` until its startup gate
+ * (log open, migrations applied, projections caught up, listener bound,
+ * `prepared` signalled), `ready` after it, `draining` once it refuses new
+ * runs before a restart.
+ */
+export const ENVIRONMENT_READINESS = ["starting", "ready", "draining"] as const;
+export const EnvironmentReadiness = z.enum(ENVIRONMENT_READINESS).meta({
+  description:
+    "Whether the environment accepts work: starting (before its startup gate), ready, or draining (refusing new runs before a restart).",
+});
+export type EnvironmentReadiness = z.infer<typeof EnvironmentReadiness>;
+
+/**
+ * How the environment is reached, derived from what it binds: `local-only`
+ * when only loopback is bound, `tailnet` when the tailnet interface is too.
+ * Under both, every request but discovery, health and the two exchanges needs
+ * a client session; there is no unauthenticated policy.
+ */
+export const AUTH_POLICIES = ["local-only", "tailnet"] as const;
+export const AuthPolicy = z.enum(AUTH_POLICIES).meta({
+  description:
+    "How the environment is reached: local-only when it binds loopback alone, tailnet when it binds its tailnet address too. Both require a client session.",
+});
+export type AuthPolicy = z.infer<typeof AuthPolicy>;
+
+/**
+ * A host as a URL or a Host header writes it, with `:port` when one is
+ * given: an IPv6 address in brackets (`[fd7a::1]:7433`), anything else as it
+ * is. The one place the harness brackets an address.
+ */
+export const formatHostPort = (host: string, port?: number): string =>
+  `${host.includes(":") ? `[${host}]` : host}${port === undefined ? "" : `:${port}`}`;
+
+/**
+ * The port an environment listens on when none is given, so an address typed
+ * without one means it. A chosen default (env spec, "Further Notes"); the
+ * environment's `DEFAULT_PORT` is held to it by a test.
+ */
+export const DEFAULT_ENVIRONMENT_PORT = 7433;
+
+/** Where an environment answers, unauthenticated, who it is and whether it is ready. */
+export const DISCOVERY_PATH = `/.well-known/${PRODUCT_NAME}/environment`;
+
+/** Where an environment answers its readiness and version, for the launcher and the setup checklist. */
+export const HEALTH_PATH = "/health";
+
+/**
+ * An environment's icon and colour where discovery and `hello` carry them
+ * beside its name (#323): optional, so a client reads an environment from
+ * before them, and they came with no protocol bump. A name the reader does
+ * not know (a newer environment's icon or colour) reads as none, as the
+ * environment stream's snapshot reads it: these are a client's first reads
+ * of the environment, and a badge it cannot draw must not keep it from
+ * connecting. The export publishes the sets, which is what an environment
+ * sends.
+ */
+export const environmentLookFields = {
+  environmentIcon: EnvironmentIcon.optional()
+    .catch(undefined)
+    .meta({ description: "The environment's icon; absent from an environment that predates it. A client reads a name it does not know as none." }),
+  environmentColour: EnvironmentColour.optional()
+    .catch(undefined)
+    .meta({ description: "The environment's colour; absent from an environment that predates it. A client reads a name it does not know as none." }),
+};
+
+/**
+ * What `GET` on the discovery path answers, with no credential: enough for a
+ * client or the setup checklist to tell which environment this is, whether it
+ * speaks the client's protocol, and whether it is ready.
+ */
+export const DiscoveryDocument = z
+  .object({
+    environmentId: EnvironmentId,
+    environmentName: z.string().min(1),
+    ...environmentLookFields,
+    harnessVersion: z.string().min(1).meta({ description: "The version of the harness the environment runs." }),
+    protocolVersion: ProtocolVersion,
+    capabilities: CapabilityFlags,
+    authPolicy: AuthPolicy,
+    readiness: EnvironmentReadiness,
+  })
+  .meta({
+    description:
+      "The unauthenticated discovery document: who the environment is (its id, name, icon and colour), what it speaks and offers, how it is reached and whether it is ready.",
+  });
+export type DiscoveryDocument = z.infer<typeof DiscoveryDocument>;
+
+/** What `GET /health` answers: the readiness and the harness version, nothing else. */
+export const HealthDocument = z
+  .object({
+    status: EnvironmentReadiness,
+    version: z.string().min(1).meta({ description: "The version of the harness the environment runs." }),
+  })
+  .meta({ description: "The health answer: the environment's readiness as status, and the harness version." });
+export type HealthDocument = z.infer<typeof HealthDocument>;

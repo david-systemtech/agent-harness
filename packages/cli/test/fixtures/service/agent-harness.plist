@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The agent-harness environment. Written by "agent-harness service install"; "agent-harness service uninstall" removes it. -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>agent-harness</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/sh</string>
+		<string>/Users/david/Library/Application Support/agent-harness/launcher-entry.sh</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>ExitTimeOut</key>
+	<integer>1860</integer>
+	<key>StandardOutPath</key>
+	<string>/Users/david/Library/Application Support/agent-harness/logs/service.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/david/Library/Application Support/agent-harness/logs/service.log</string>
+</dict>
+</plist>

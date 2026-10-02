@@ -1,0 +1,193 @@
+import { join } from "node:path";
+import { ESLint } from "eslint";
+import { describe, expect, it } from "vitest";
+
+// The rules' own suites prove what they report; this proves the repository's
+// lint configuration runs them where ADR 0003 says, so `pnpm lint` enforces them.
+const eslint = new ESLint({ cwd: join(import.meta.dirname, "..") });
+
+const ruleIds = async (filePath: string, code: string): Promise<(string | null)[]> => {
+  const [result] = await eslint.lintText(code, { filePath });
+  return (result?.messages ?? []).map((m) => m.ruleId);
+};
+
+const store = `export const pinnedSessions = createStore([]);\n`;
+const shellImport = `import type { SessionSummary } from "@agent-harness/contracts";\nexport type Shell = { open(s: SessionSummary): void };\n`;
+
+describe("the lint configuration", () => {
+  it.each([
+    "packages/client-runtime/src/sessions.ts",
+    "packages/tui/src/sidebar.ts",
+    "packages/gui/src/sidebar.tsx",
+    "packages/web/src/sidebar.ts",
+  ])("runs the organisation-state rule in the client package file %s", async (file) => {
+    expect(await ruleIds(file, store)).toContain("agent-harness/no-client-organisation-state");
+  });
+
+  it.each(["packages/environment/src/sessions.ts", "packages/contracts/src/sessions.ts"])(
+    "leaves the non-client package file %s alone",
+    async (file) => {
+      expect(await ruleIds(file, store)).not.toContain("agent-harness/no-client-organisation-state");
+    },
+  );
+
+  it("leaves a client package's test files alone, whose fixtures model the environment's data", async () => {
+    expect(
+      await ruleIds("packages/tui/src/sidebar.test.ts", `export const summary = { title: "t", pinnedAt: 1 };\n`),
+    ).not.toContain("agent-harness/no-client-organisation-state");
+  });
+
+  it("runs the shell rule on the desktop shell interface module", async () => {
+    expect(await ruleIds("packages/client-runtime/src/shell.ts", shellImport)).toContain(
+      "agent-harness/no-session-types-in-shell",
+    );
+  });
+
+  it.each(["packages/desktop/src/main.ts", "packages/desktop/src/preload/preload.ts", "packages/desktop/test/fake-electron.ts", "packages/desktop/src/desktop.test.ts"])(
+    "runs the shell rule on the desktop package that implements the interface, %s",
+    async (file) => {
+      expect(await ruleIds(file, shellImport)).toContain("agent-harness/no-session-types-in-shell");
+      // Electron's own names are checked too: its `session` module and its event types are Sessions and Events to the rule.
+      expect(await ruleIds(file, `import { session } from "electron";\nexport { session };\n`)).toContain("agent-harness/no-session-types-in-shell");
+      expect(await ruleIds(file, `import { app, BrowserWindow } from "electron";\nexport { app, BrowserWindow };\n`)).not.toContain(
+        "agent-harness/no-session-types-in-shell",
+      );
+    },
+  );
+
+  it("keeps contracts free of imports from the environment", async () => {
+    expect(
+      await ruleIds("packages/contracts/src/x.ts", `import { x } from "@agent-harness/environment";\nexport { x };\n`),
+    ).toContain("no-restricted-imports");
+  });
+
+  it("keeps the environment, its tests included, free of imports from a client or the CLI, by name or by relative path", async () => {
+    const ids = async (file: string, source: string) => ruleIds(file, `import { x } from "${source}";\nexport { x };\n`);
+    const relative = "agent-harness/no-relative-import-into";
+    expect(await ids("packages/environment/src/x.ts", "@agent-harness/tui")).toContain("no-restricted-imports");
+    expect(await ids("packages/environment/src/x.ts", "@agent-harness/desktop")).toContain("no-restricted-imports");
+    expect(await ids("packages/environment/src/x.ts", "../../desktop/src/desktop.js")).toContain(relative);
+    expect(await ids("packages/environment/src/terminals/x.test.ts", "../../../tui/src/terminal/one-off.js")).toContain(relative);
+    expect(await ids("packages/environment/test/x.ts", "../../cli/src/main.js")).toContain(relative);
+    // The same climbs spelled with a leading `./`, a `./` between them, or back down through `packages/`.
+    expect(await ids("packages/environment/src/x.ts", "./../../tui/src/x.js")).toContain(relative);
+    expect(await ids("packages/environment/src/x.ts", ".././../client-runtime/src/x.js")).toContain(relative);
+    expect(await ids("packages/environment/src/x.ts", "../../../packages/cli/src/main.js")).toContain(relative);
+    // A doubled slash anywhere in the climb, which vitest and tsc read as one (path.resolve collapses it).
+    expect(await ids("packages/environment/src/x.ts", ".//../../tui/src/x.js")).toContain(relative);
+    expect(await ids("packages/environment/src/x.ts", "..//../cli/src/main.js")).toContain(relative);
+    expect(await ids("packages/environment/src/x.ts", "../..//..//packages//tui/src/x.js")).toContain(relative);
+    // An interior `.` or `..` after the climb, which resolves into a client or the CLI all the same.
+    expect(await ids("packages/environment/src/x.ts", "../../contracts/../cli/src/main.js")).toContain(relative);
+    expect(await ids("packages/environment/src/x.ts", "../../../packages/contracts/../cli/src/main.js")).toContain(relative);
+    expect(await ids("packages/environment/src/x.ts", "../.././tui/src/x.js")).toContain(relative);
+    expect(await ids("packages/environment/src/x.ts", "./terminals/x.js")).not.toContain(relative);
+    expect(await ids("packages/environment/src/terminals/x.test.ts", "../../test/helper.js")).not.toContain(relative);
+    // A folder of the environment's own named like a client is not that client.
+    expect(await ids("packages/environment/src/terminals/x.ts", "../web/x.js")).not.toContain(relative);
+    expect(await ids("packages/environment/src/x.ts", "@agent-harness/contracts")).not.toContain("no-restricted-imports");
+    // The theme package, pure maths on contracts alone, which the Appearance step's contrast check runs (ADR 0023; #391).
+    expect(await ids("packages/environment/src/appearance/x.ts", "@agent-harness/theme")).not.toContain("no-restricted-imports");
+  });
+
+  describe("the literal-colour rule (ADR 0023)", () => {
+    const colour = "agent-harness/no-literal-colour";
+    const script = `export const edge = "1px solid #fff";\n`;
+    const stylesheet = `.edge { border: 1px solid #fff; }\n`;
+    const markup = `<svg viewBox="0 0 8 8"><path fill="#fff" d="M0 0h8v8z" /></svg>\n`;
+
+    it.each([
+      "packages/gui/src/sidebar.tsx",
+      "packages/gui/src/theme.ts",
+      "packages/gui/src/sidebar.test.tsx",
+      "packages/desktop/src/window.ts",
+      "packages/web/src/main.ts",
+    ])("runs in the painting package's script %s", async (file) => {
+      expect(await ruleIds(file, script)).toContain(colour);
+    });
+
+    it.each(["packages/gui/src/app.css", "packages/desktop/src/splash.css", "packages/web/src/index.css"])(
+      "runs in the painting package's stylesheet %s, through ESLint's CSS language",
+      async (file) => {
+        expect(await ruleIds(file, stylesheet)).toEqual([colour]);
+      },
+    );
+
+    it.each(["packages/gui/index.html", "packages/gui/src/assets/logo.svg", "packages/desktop/src/splash.html", "packages/desktop/resources/mark.svg", "packages/web/index.html", "packages/web/public/logo.svg"])(
+      "runs in the painting package's SVG asset or HTML document %s, through html-eslint's HTML language",
+      async (file) => {
+        expect(await ruleIds(file, markup)).toEqual([colour]);
+      },
+    );
+
+    it.each(["packages/extension/src/options.html", "packages/browser/test/fixtures/plain-article.html", "packages/tui/assets/logo.svg", "packages/theme/src/icon.svg"])(
+      "leaves %s alone: the rule reads the painting packages' documents only",
+      async (file) => {
+        expect(await ruleIds(file, markup)).not.toContain(colour);
+      },
+    );
+
+    it.each(["packages/tui/src/sidebar.tsx", "packages/client-runtime/src/theme.ts", "packages/theme/src/css.ts", "packages/environment/src/x.ts"])(
+      "leaves %s alone: the terminal UI keeps the terminal's colours, and the runtime and the theme paint nothing",
+      async (file) => {
+        expect(await ruleIds(file, script)).not.toContain(colour);
+      },
+    );
+
+    it("allowlists xterm's fallback theme and the preview frame's content, and nothing beside them", async () => {
+      expect(await ruleIds("packages/gui/src/terminal/xterm-fallback-theme.ts", script)).not.toContain(colour);
+      expect(await ruleIds("packages/gui/src/preview/preview-frame-content.ts", script)).not.toContain(colour);
+      expect(await ruleIds("packages/gui/src/preview/preview-frame-content.css", stylesheet)).not.toContain(colour);
+      expect(await ruleIds("packages/gui/src/terminal/terminal-pane.tsx", script)).toContain(colour);
+      expect(await ruleIds("packages/gui/src/preview/preview-pane.tsx", script)).toContain(colour);
+    });
+
+    it("parses a Tailwind 4 stylesheet mapping the tokens, with no problem", async () => {
+      const tailwind = [
+        `@import "tailwindcss";`,
+        `@custom-variant dark (&:where(.dark, .dark *));`,
+        `@theme inline { --color-*: initial; --color-beam: var(--beam); }`,
+        `@layer base { body { background: var(--abyss); color: var(--ink); } }`,
+        `.chip { @apply bg-beam text-ink; }`,
+      ].join("\n");
+      expect(await ruleIds("packages/gui/src/app.css", tailwind)).toEqual([]);
+    });
+  });
+
+  it("keeps the GUI's source to what a browser tab runs: no Electron, no Node built-in, no environment", async () => {
+    const ids = async (file: string, source: string) => ruleIds(file, `import { x } from "${source}";\nexport { x };\n`);
+    for (const source of ["electron", "electron/renderer", "node:fs", "fs", "path", "node:sqlite", "@agent-harness/environment"]) {
+      expect(await ids("packages/gui/src/frame/frame.tsx", source)).toContain("no-restricted-imports");
+      expect(await ids("packages/web/src/main.ts", source)).toContain("no-restricted-imports");
+    }
+    for (const source of ["@agent-harness/client-runtime", "@agent-harness/contracts", "@agent-harness/theme", "react", "@radix-ui/react-dialog", "./frame.js", "fs-extra-in-name-only"]) {
+      expect(await ids("packages/gui/src/frame/frame.tsx", source)).not.toContain("no-restricted-imports");
+    }
+    // A test reads files and runs builds under Node; it still never imports the environment.
+    expect(await ids("packages/gui/src/bundle.test.ts", "node:fs")).not.toContain("no-restricted-imports");
+    expect(await ids("packages/gui/src/bundle.test.ts", "@agent-harness/environment")).toContain("no-restricted-imports");
+  });
+
+  it("keeps Electron and the desktop's entry out of the desktop's tests, which fake Electron", async () => {
+    const ids = async (file: string, source: string) => ruleIds(file, `import { x } from "${source}";\nexport { x };\n`);
+    for (const file of ["packages/desktop/src/desktop.test.ts", "packages/desktop/test/harness.ts"]) {
+      expect(await ids(file, "electron")).toContain("no-restricted-imports");
+      expect(await ids(file, "electron/main")).toContain("no-restricted-imports");
+      expect(await ids(file, "./main.js")).toContain("no-restricted-imports");
+      expect(await ids(file, "../src/main.js")).toContain("no-restricted-imports");
+      expect(await ids(file, "../src/electron.js")).not.toContain("no-restricted-imports");
+      expect(await ids(file, "./domain.js")).not.toContain("no-restricted-imports");
+    }
+    expect(await ids("packages/desktop/src/main.ts", "electron")).not.toContain("no-restricted-imports");
+  });
+
+  it("keeps the client runtime's imports to contracts", async () => {
+    const ids = async (source: string) =>
+      ruleIds("packages/client-runtime/src/x.ts", `import { x } from "${source}";\nexport { x };\n`);
+    expect(await ids("@agent-harness/environment")).toContain("no-restricted-imports");
+    expect(await ids("react")).toContain("no-restricted-imports");
+    expect(await ids("node:fs")).toContain("no-restricted-imports");
+    expect(await ids("@agent-harness/contracts")).not.toContain("no-restricted-imports");
+    expect(await ids("./projection-cache.js")).not.toContain("no-restricted-imports");
+  });
+});
