@@ -21,10 +21,11 @@ describe.each(workflows)("the %s release's packed servers", (_name, workflow) =>
     const windows = job(workflow, "desktop-windows");
     expect(mac).toContain('test -f "$app/Contents/Resources/server/node_modules/@agent-harness/contracts/package.json"');
     expect(linux).toContain("test -f unpacked/opt/agent-harness/resources/server/node_modules/@agent-harness/contracts/package.json");
-    expect(windows).toContain("7z x -y desktop/agent-harness-desktop-win32-x64-setup.exe -ounpacked-setup");
+    expect(windows).toContain("sevenzip=$(bash scripts/7zip.sh)");
+    expect(windows).toContain('"$sevenzip" x -y desktop/agent-harness-desktop-win32-x64-setup.exe -ounpacked-setup');
     expect(windows).toContain("-name 'app-64.7z'");
     expect(windows).toContain('test -f "$payload"');
-    expect(windows).toContain('7z x -y "$payload" -ounpacked-windows');
+    expect(windows).toContain('"$sevenzip" x -y "$payload" -ounpacked-windows');
     expect(windows).toContain("test -f unpacked-windows/resources/server/node_modules/@agent-harness/contracts/package.json");
     for (const body of [mac, linux, windows]) {
       expect(body.indexOf("server/node_modules/@agent-harness/contracts/package.json")).toBeLessThan(body.search(/- name: (Keep the desktop build|Hand the desktop to the release job)/));
@@ -33,6 +34,15 @@ describe.each(workflows)("the %s release's packed servers", (_name, workflow) =>
 });
 
 describe("the public release's packaged server smoke tests", () => {
+  it("exercises Mac tunnel ownership with the packaged environment and its bundled Node", () => {
+    const body = job(hosted, "smoke-macos");
+    expect(body).toContain("- name: Verify packaged macOS tunnel ownership");
+    expect(body).toContain('"$server/node/bin/node" --input-type=module');
+    expect(body).toContain("packages/environment/dist/serve/interfaces.js");
+    expect(body).toContain("tailscaleDetector");
+    expect(body).toContain('"Stopped", "NeedsLogin"');
+  });
+
   it.each([
     ["smoke-windows", "windows-latest", "desktop-windows", "desktop-win32-x64"],
     ["smoke-macos", "macos-latest", "desktop-macos", "desktop-darwin-arm64"],
