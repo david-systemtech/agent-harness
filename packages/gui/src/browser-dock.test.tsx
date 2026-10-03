@@ -1,3 +1,4 @@
+import { chooseHeaderAction, openHeaderMenu } from "../test/header-actions.js";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { fakeShell, type FakeShell } from "@agent-harness/client-runtime/testing";
 import { describe, expect, it, vi } from "vitest";
@@ -14,6 +15,35 @@ const opened = async (shell?: FakeShell) => {
 };
 
 describe("the browser dock", () => {
+  it("restores the current address on Escape without navigating or hiding the browser", async () => {
+    const app = await opened();
+    await chooseHeaderAction(app, "Browser");
+    const dock = await screen.findByRole("region", { name: "Browser" });
+    await waitFor(() => expect(app.shell.calls.some(([name]) => name === "webView.attach")).toBe(true));
+    act(() => app.shell.changeWebView("view-1", { url: "https://example.org/current", canGoBack: true, canGoForward: false }));
+    const address = within(dock).getByRole("textbox", { name: "Address" });
+    await app.user.clear(address);
+    await app.user.type(address, "unfinished");
+    await app.user.keyboard("{Escape}");
+    expect((address as HTMLInputElement).value).toBe("https://example.org/current");
+    expect(app.shell.calls.some(([name]) => name === "webView.navigate")).toBe(false);
+    expect(screen.getByRole("region", { name: "Browser" })).toBe(dock);
+  });
+
+  it("says a navigation failure in the browser and clears it on the next navigation", async () => {
+    const shell = fakeShell();
+    shell.answer("webView.navigate", async () => { throw new Error("This page could not be reached."); });
+    const app = await opened(shell);
+    await chooseHeaderAction(app, "Browser");
+    const dock = await screen.findByRole("region", { name: "Browser" });
+    await waitFor(() => expect(within(dock).getByRole("button", { name: "Go" }).hasAttribute("disabled")).toBe(false));
+    await app.user.click(within(dock).getByRole("button", { name: "Go" }));
+    expect((await within(dock).findByRole("status")).textContent).toContain("This page could not be reached.");
+    shell.answer("webView.navigate", async () => {});
+    await app.user.click(within(dock).getByRole("button", { name: "Go" }));
+    await waitFor(() => expect(within(dock).queryByRole("status")).toBeNull());
+  });
+
   it.each([
     ["localhost:3000/path", "https://localhost:3000/path"],
     ["example.org:8443/path", "https://example.org:8443/path"],
@@ -24,7 +54,7 @@ describe("the browser dock", () => {
     ["ftp://example.org/path", "ftp://example.org/path"],
   ])("navigates address %s as %s", async (input, url) => {
     const app = await opened();
-    await app.user.click(screen.getByRole("button", { name: "Browser" }));
+    await chooseHeaderAction(app, "Browser");
     const dock = await screen.findByRole("region", { name: "Browser" });
     await waitFor(() => expect(app.shell.calls.some(([name]) => name === "webView.attach")).toBe(true));
     const address = within(dock).getByRole("textbox", { name: "Address" });
@@ -36,7 +66,7 @@ describe("the browser dock", () => {
 
   it("opens from the header, navigates with its address line and hides and restores the same page with Mod+Shift+B", async () => {
     const app = await opened();
-    await app.user.click(screen.getByRole("button", { name: "Browser" }));
+    await chooseHeaderAction(app, "Browser");
     const dock = await screen.findByRole("region", { name: "Browser" });
     await waitFor(() => expect(app.shell.calls.some(([name]) => name === "webView.attach")).toBe(true));
     const address = within(dock).getByRole("textbox", { name: "Address" });
@@ -64,7 +94,7 @@ describe("the browser dock", () => {
   });
   it("follows size and position changes while shown, keeps pages across session switches and Settings, and isolates the next pane", async () => {
     const app = await opened();
-    await app.user.click(within(screen.getByRole("banner")).getByRole("button", { name: "Browser" }));
+    await chooseHeaderAction(app, "Browser");
     const surface = screen.getByLabelText("Browser page");
     let bounds = { x: 600, y: 130, width: 500, height: 620 };
     const geometry = vi.spyOn(surface, "getBoundingClientRect").mockImplementation(() => new DOMRect(bounds.x, bounds.y, bounds.width, bounds.height));
@@ -83,13 +113,14 @@ describe("the browser dock", () => {
     expect(app.shell.calls.filter(([name]) => name === "webView.create")).toHaveLength(1);
     await app.user.keyboard("{Control>},{/Control}");
     await screen.findByRole("region", { name: "Settings" });
+    await waitFor(() => expect(app.shell.calls.at(-1)).toEqual(["webView.hide", "view-1"]));
     expect(app.shell.calls.some(([name]) => name === "webView.destroy")).toBe(false);
     await app.user.keyboard("{Escape}");
     await screen.findByRole("region", { name: "Browser" });
     expect(app.shell.calls.filter(([name]) => name === "webView.create")).toHaveLength(1);
-    await app.user.click(screen.getByRole("button", { name: "Split right" }));
+    await chooseHeaderAction(app, "Split right");
     app.open("desk", 1);
-    await app.user.click(within(screen.getByRole("banner")).getByRole("button", { name: "Browser" }));
+    await chooseHeaderAction(app, "Browser");
     await waitFor(() => expect(app.shell.calls.filter(([name]) => name === "webView.create")).toHaveLength(2));
     expect(app.shell.calls.some(([name]) => name === "webView.destroy")).toBe(false);
     const focused = screen.getAllByRole("region", { name: "Session pane" }).find((pane) => pane.getAttribute("aria-current") === "true")!;
@@ -102,19 +133,18 @@ describe("the browser dock", () => {
     const shell = { ...fakeShell(), webView: undefined } as unknown as FakeShell;
     const app = await opened(shell);
     expect(app.runtime.capability(app.environment("desk").environmentId, "shell.webView")).toMatchObject({ status: "absent", reason: "no-shell" });
-    expect(within(screen.getByRole("banner")).getByRole("button", { name: "Browser" }).hasAttribute("disabled")).toBe(true);
+    const menu = await openHeaderMenu(app);
+    expect(within(menu).getByRole("menuitem", { name: "Browser" }).getAttribute("aria-disabled")).toBe("true");
+    await app.user.keyboard("{Escape}");
     await app.user.keyboard("{Control>}{Shift>}b{/Shift}{/Control}");
     expect(screen.queryByRole("region", { name: "Browser" })).toBeNull();
-    act(() => screen.getByRole("button", { name: "Side panes" }).focus());
-    await app.user.keyboard("{Enter}");
-    const menu = await screen.findByRole("menu");
-    const choice = within(menu).getByRole("menuitem", { name: /^Browser/ });
+    const menuAgain = await openHeaderMenu(app);
+    const choice = within(menuAgain).getByRole("menuitem", { name: /^Browser/ });
     expect(choice.getAttribute("aria-disabled")).toBe("true");
     await app.user.click(choice);
-    const dock = await screen.findByRole("region", { name: "Browser" });
-    expect(within(dock).queryByRole("textbox", { name: "Address" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Browser" })).toBeNull();
     const absent = app.runtime.capability(app.environment("desk").environmentId, "shell.webView");
-    if (absent.status === "absent") expect(dock.textContent).toContain(absent.message);
+    if (absent.status === "absent") expect(choice.textContent).toContain(absent.message);
     expect(app.shell.calls.some(([name]) => name === "webView.create")).toBe(false);
   });
 
@@ -129,7 +159,7 @@ describe("the browser dock", () => {
         }),
     );
     const app = await opened(shell);
-    await app.user.click(within(screen.getByRole("banner")).getByRole("button", { name: "Browser" }));
+    await chooseHeaderAction(app, "Browser");
     await app.user.click(screen.getByRole("button", { name: "Close Browser" }));
     await act(async () => finish("delayed-view"));
     await waitFor(() => expect(app.shell.calls).toContainEqual(["webView.destroy", "delayed-view"]));
@@ -139,7 +169,7 @@ describe("the browser dock", () => {
 
   it("reopens a dock in the same opaque partition after relaunch, so its cookies and storage survive", async () => {
     let app = await opened();
-    await app.user.click(within(screen.getByRole("banner")).getByRole("button", { name: "Browser" }));
+    await chooseHeaderAction(app, "Browser");
     await waitFor(() => expect(app.shell.calls.some(([name]) => name === "webView.attach")).toBe(true));
     const creates = () => app.shell.calls.filter(([name]) => name === "webView.create").map(([, options]) => options as { partition?: string });
     expect(creates()[0]!.partition).toMatch(/^[a-z0-9-]+$/);
@@ -151,7 +181,7 @@ describe("the browser dock", () => {
   it("answers the toggle from the native page too, using this client's remapped key", async () => {
     const app = await opened();
     act(() => app.presentation.set("keyRemaps", { "app.browser.toggle": ["Mod+Shift+K"] }));
-    await app.user.click(within(screen.getByRole("banner")).getByRole("button", { name: "Browser" }));
+    await chooseHeaderAction(app, "Browser");
     await waitFor(() => expect(app.shell.calls.some(([name]) => name === "webView.attach")).toBe(true));
     act(() => app.shell.pressWebViewKey("view-1", { key: "K", code: "KeyK", ctrlKey: true, metaKey: false, shiftKey: true, altKey: false }));
     expect(screen.queryByRole("region", { name: "Browser" })).toBeNull();
