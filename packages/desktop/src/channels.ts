@@ -11,8 +11,13 @@
  */
 export const SHELL_GLOBAL = "desktopShell";
 
+export const SECRET_ACCESS_CHANNEL = "shell:secrets.accessChanged";
+
+export const WINDOW_CHANNEL = "shell:window.changed";
+
 /** The members the renderer awaits, each answered through `ipcMain.handle`. */
 export const ANSWERED = [
+  "window.state",
   "dialogs.openFile",
   "dialogs.openFileContents",
   "dialogs.openDirectory",
@@ -31,8 +36,11 @@ export const ANSWERED = [
   "secrets.set",
   "secrets.delete",
   "secrets.protection",
+  "secrets.access",
   "localGrant.read",
+  "service.applyUpdateNow",
   "service.install",
+  "service.pendingUpdate",
   "service.start",
   "service.status",
   "preview.grant",
@@ -51,6 +59,9 @@ export type Answered = (typeof ANSWERED)[number];
 
 /** The members that answer nothing (`void` in the shell interface), each heard through `ipcMain.on`. */
 export const TOLD = [
+  "window.minimize",
+  "window.toggleMaximize",
+  "window.close",
   "window.setTitle",
   "window.focus",
   "window.setBadge",
@@ -61,6 +72,7 @@ export const TOLD = [
   "webView.back",
   "webView.forward",
   "webView.reload",
+  "webView.stop",
 ] as const;
 export type Told = (typeof TOLD)[number];
 

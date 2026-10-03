@@ -25,6 +25,7 @@ const scriptBanks = (desk: EnvironmentHandle, initial: BankRecord[] = []) => {
 };
 const open = async (more: Partial<ScriptedEnvironment> = {}, initial: BankRecord[] = []) => {
   const app = await renderApp({ environments: [{ name: "desk", reach: "local", capabilities: ["banks", "forge", "setup"], accounts: [{ id: "work", label: "Work" }, { id: "home", label: "Home" }], forges: { accounts: [{}] }, sessions: [{ title: "Work", repositoryIdentity: "https://github.com/david/harness" }], ...more }] }, { firstLaunch: true });
+  await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
   const desk = app.environment("desk");
   scriptBanks(desk, initial);
   await app.user.click(await screen.findByRole("button", { name: "Memory bank" }));
@@ -87,7 +88,7 @@ describe("the Memory bank card", () => {
     await app.user.click(within(card).getByRole("button", { name: "Create" }));
     expect((await within(card).findByRole("alert")).textContent).toBe("That name is taken. Choose another.");
     desk.wire.answer("banks.join.preview", () => ({ error: { code: "internal", message: "Cannot read this bank.\nTry later.", data: {} } }));
-    await app.user.click(within(card).getByRole("button", { name: "Join a bank" }));
+    await app.user.click(within(card).getByRole("radio", { name: "Join a bank" }));
     await app.user.type(within(card).getByRole("textbox", { name: "Bank link" }), "https://github.com/platform/memory");
     await app.user.click(within(card).getByRole("button", { name: "Preview" }));
     expect(await within(card).findByText("Cannot read this bank. Try later.")).toBeDefined();
@@ -97,7 +98,7 @@ describe("the Memory bank card", () => {
     const { app, desk, card } = await open({ forges: { accounts: [{}, { origin: "https://git.example.test", kind: "forgejo", primary: false }, { origin: "https://offline.example.test", identity: null, problem: { kind: "needs-credential", since, message: "No credential." } }] } });
     const nextId = desk.forgeAccounts()[1]?.id ?? "";
     desk.wire.answer("forge.orgs.list", (params) => ({ result: { owners: params.forgeAccountId === nextId ? [{ login: "other-team", kind: "organisation" as const }] : [{ login: "david", kind: "user" as const }, { login: "first-team", kind: "organisation" as const }] } }));
-    await app.user.click(within(card).getByRole("button", { name: "Team" }));
+    await app.user.click(within(card).getByRole("radio", { name: "Team" }));
     await within(card).findByRole("option", { name: "first-team" });
     await app.user.selectOptions(within(card).getByRole("combobox", { name: "Owner" }), "first-team");
     const forge = within(card).getByRole("combobox", { name: "Forge" });
@@ -124,11 +125,12 @@ describe("the Memory bank card", () => {
       scriptBanks(desk, [joined]);
       return accepted({ bank: joined });
     });
-    await app.user.click(within(card).getByRole("button", { name: "Join a bank" }));
+    await app.user.click(within(card).getByRole("radio", { name: "Join a bank" }));
     await app.user.type(within(card).getByRole("textbox", { name: "Bank link" }), "https://github.com/platform/team-memory");
     await app.user.click(within(card).getByRole("button", { name: "Preview" }));
     const facts = await within(card).findByRole("region", { name: "Bank preview" });
     for (const text of ["Platform team's shared memory.", "Platform organisation", "Runtime project", "how-we-work", "Shared with the team: no personal facts, no secrets.", "Can read: yes. Can push: no."]) expect(within(facts).getByText(text)).toBeDefined();
+    for (const name of ["Organisations", "Projects", "Entities", "Orientation", "Access and review"]) expect(within(facts).getByRole("heading", { name })).toBeDefined();
     expect(facts.textContent).toContain("engine");
     expect(facts.textContent).toContain("david, alex");
     expect(facts.textContent).toContain("orientation, decisions, status, manifest");
@@ -150,7 +152,7 @@ describe("the Memory bank card", () => {
   it("creates a team under a live organisation owner and offers its invitation and copyable join link", async () => {
     const { app, desk, card } = await open();
     desk.wire.answer("forge.orgs.list", () => ({ result: { owners: [{ login: "david", kind: "user" as const }, { login: "team-org", kind: "organisation" as const }] } }));
-    await app.user.click(within(card).getByRole("button", { name: "Team" }));
+    await app.user.click(within(card).getByRole("radio", { name: "Team" }));
     const forge = await within(card).findByRole("combobox", { name: "Forge" });
     expect((forge as HTMLSelectElement).value).toBe(desk.forgeAccounts()[0]?.id);
     await within(card).findByRole("option", { name: "team-org" });

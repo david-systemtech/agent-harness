@@ -112,7 +112,18 @@ checkout, after `pnpm install`:
    Quit and start: the window opens on it before the page paints.
 9. **window.** `setTitle("checklist")` retitles the window. Minimise it,
    `setTimeout(() => desktopShell.window.focus(), 2000)`: it comes back to the
-   front.
+   front. Check the frame on each platform (record macOS, Windows and Linux
+   separately): there is no OS title bar above the 44px header. Drag its blank
+   space to move the window; Settings, search, More and theme controls remain
+   clickable and never start a drag. On macOS, native traffic lights occupy
+   the reserved 76px left inset; entering full screen removes the inset and
+   leaving restores it. On Windows and Linux, the three 28px buttons minimize,
+   maximize/restore and close; close turns signal on hover and all three dim
+   when another window has focus. OS maximize/restore actions update the middle
+   button too. Tab to the buttons: names and tooltips match their actions.
+   `await desktopShell.window.state()` agrees with native focus, maximize and
+   full-screen changes. Use `desktopShell.window.onChange(console.log)` and
+   its returned unsubscribe to verify events stop after unsubscribing.
 10. **dialogs.** Each opens modal to the window (a sheet on macOS):
     `openFile({ multiple: true })` answers the paths chosen, `[]` when
     cancelled; `openFileContents({ maxBytes: 1024 })` on a small and a large
@@ -298,9 +309,22 @@ ordinary user. The builds are unsigned (signed ad hoc on macOS) in milestone
 3. **The hand-over.** With the app running, run
    `<setup> /S --updated --force-run`: the setup waits for the app to exit
    (quit it), installs over it with no window and starts it again.
-4. **Uninstalled.** Uninstall it from Settings, Apps: the install directory
-   and the scheme's registry key are gone; `%LOCALAPPDATA%\agent-harness`,
-   the environment's and the desktop's data, is left.
+4. **Uninstalled (#1478).** First start the installed environment and confirm
+   `service status` says running and ready. Quit the desktop, then uninstall
+   from Settings, Apps (also repeat with `Uninstall agent-harness.exe /S`).
+   `schtasks /Query /TN agent-harness` finds nothing, nothing answers on the
+   environment's port, and its launcher and server processes are gone. The
+   install directory and scheme registry key are gone; `launcher-entry.cmd`,
+   `bin\agent-harness.cmd` and `service.json` are removed from the data directory.
+   `%LOCALAPPDATA%\agent-harness` keeps personal data, desktop preferences and
+   server versions. Reinstall and start: the retained environment is usable.
+   To remove retained data as well, delete that folder after uninstalling.
+   If service cleanup fails, uninstall exits nonzero and keeps the app's
+   resources; fix the service error before retrying.
+   The hosted release smoke covers an installed and started launcher, task
+   removal and data retention. It starts the entry directly because its
+   temporary user has no interactive logon; record the live scheduled-task
+   stop separately on a Windows desktop.
 
 ### Arch
 
@@ -370,6 +394,13 @@ section as not run. On each platform, with a session open in the pane:
    the app's own page stays on `agent-harness://app/`, and the console shows
    no content-policy error from it.
 
+5. **Loading and Stop.** Navigate to a slow page: Reload becomes the named
+   Stop icon and its tooltip says Stop. Stop cancels the load and restores
+   Reload without an error strip. Reload again and let it finish: Reload
+   returns. Repeat through an in-page link and history navigation; an iframe
+   loading by itself must leave Reload visible. Hide and restore the dock
+   during the load: Stop still reflects that page's state.
+
 ## First launch and the keychain (#395)
 
 Run on each platform with a packaged desktop (#423's artefact) as an ordinary
@@ -415,7 +446,24 @@ status`, from a release's shim, says `Installed: no`, or the user is new).
 1. **The Keychain prompt.** The first token kept may ask to let the app use
    "agent-harness Safe Storage" in the login keychain: record whether it
    asked, and that allowing it keeps later launches quiet.
-2. **Translocation.** Unzip the download in Downloads and open the app from
+2. **Replace an app with existing credentials (#1480).** Keep a 0.1.0
+   install's environment data, accounts, paired connections and encrypted
+   files in place. Quit it, verify the new ZIP's SHA-256 and replace the app
+   in Applications with 0.1.1 or the release under test. Open Settings and
+   install the bundled environment from Your machines. Verify the environment
+   reaches the carried version, with the same identity and accounts, and
+   paired environments reconnect without pairing again. If macOS asks for
+   Keychain access, the window explains why in a notice, still opens Settings
+   and responds to Quit. Record the OS prompt as observed, without assuming
+   its wording. Cancel it: the window stays usable and the encrypted files
+   remain. Allow access on a subsequent attempt (or restart if the OS provider
+   retains the refusal) and verify reconnect and upgrade complete.
+   The release's macOS smoke job separately replaces a differently signed
+   fixture app, reads an existing synchronous-format credential and completes
+   a real launcher upgrade from a lower-stamped server. Its test Keychain
+   authorizes both app signatures for unattended execution; it does not prove
+   interactive OS approval or 0.1.0 data migrations.
+3. **Translocation.** Unzip the download in Downloads and open the app from
    there without moving it (Gatekeeper runs it translocated, from a read-only
    path). Run step 1: the install reads the bundle and copies the version
    out, so it works from there. Then `xattr -l <data>/versions/<v>/node/bin/node`:

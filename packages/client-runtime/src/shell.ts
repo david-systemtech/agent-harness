@@ -1,3 +1,4 @@
+import type { PendingUpdate } from "@agent-harness/contracts";
 import type { GrantReader, HttpFetch, SecretStore } from "./platform.js";
 
 /**
@@ -94,8 +95,14 @@ export const hasShellMember = (shell: Shell | undefined, member: ShellMember): b
  */
 export type SecretProtection = "os" | "unprotected" | "none";
 
+/** The macOS credential operation awaiting OS approval, refused, or settled. */
+export type SecretAccess = "waiting" | "denied" | null;
+
 /** The OS keychain as the shell gives it: the platform's `SecretStore`, and how what it keeps is protected. */
 export interface ShellSecrets extends SecretStore {
+  /** OS credential access underway or refused; no credential crosses this presentation event. */
+  readonly access?: () => Promise<SecretAccess>;
+  readonly onAccess?: (listener: (state: SecretAccess) => void) => () => void;
   /** How a token kept now is protected, which the Your machines card says when it is unprotected (#416). */
   readonly protection?: () => Promise<SecretProtection>;
 }
@@ -134,7 +141,20 @@ export interface ShellDialogs {
   save(options?: { readonly title?: string; readonly defaultPath?: string; readonly filters?: readonly FileFilter[] }): Promise<string | undefined>;
 }
 
+/** Native window geometry and activation; absent for clients without a native frame. */
+export interface ShellWindowState {
+  readonly platform: ShellPlatform;
+  readonly focused: boolean;
+  readonly maximized: boolean;
+  readonly fullScreen: boolean;
+}
+
 export interface ShellWindow {
+  readonly minimize?: () => void;
+  readonly toggleMaximize?: () => void;
+  readonly close?: () => void;
+  readonly state?: () => Promise<ShellWindowState | undefined>;
+  readonly onChange?: (listener: (state: ShellWindowState) => void) => () => void;
   setTitle(text: string): void;
   focus(): void;
   /** The dock or taskbar badge: a count, a short text, or undefined to clear it. */
@@ -206,8 +226,10 @@ export interface ShellWebView {
   back(viewId: string): void;
   forward(viewId: string): void;
   reload(viewId: string): void;
+  /** Stops the current page load without closing the view. */
+  stop(viewId: string): void;
   state(viewId: string): Promise<ShellWebViewState>;
-  /** Hears top-level page navigation and history changes, including links followed inside the page. */
+  /** Hears top-level page loading, navigation and history changes, including links followed inside the page. */
   onChange(listener: (viewId: string, state: ShellWebViewState) => void): () => void;
   /** Key presses in the native page, which the renderer may match against its own shortcuts. */
   onKey(listener: (viewId: string, key: ShellWebViewKey) => void): () => void;
@@ -224,6 +246,8 @@ export interface ShellWebViewKey {
 }
 
 export interface ShellWebViewState {
+  /** Whether the top-level page is loading; independent iframe loads do not count. */
+  readonly loading: boolean;
   readonly url: string;
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
@@ -302,6 +326,10 @@ export type ShellApplyOutcome =
 
 /** The local environment's service (ADR 0001). */
 export interface ShellService {
+  /** The installed server's pending update, read by its own CLI across a protocol gap. */
+  pendingUpdate?(): Promise<PendingUpdate>;
+  /** Apply the installed server's pending update now, using its own CLI. */
+  applyUpdateNow?(): Promise<void>;
   install(): Promise<void>;
   start(): Promise<void>;
   status(): Promise<{ readonly installed: boolean; readonly running: boolean; readonly ready: boolean }>;

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { captureCases, sceneFiles } from "../gallery/capture-plan.js";
+import { accessSettingsDetails, detailGeometry } from "../gallery/access-settings-details.js";
 import { measureSceneGeometry } from "../gallery/geometry.js";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.replaceChildren(); });
@@ -42,12 +43,14 @@ it("checks every control and fails missing geometry selectors", () => {
 it("checks computed padding, type size and reading caps as well as outer bounds", () => {
   const root = document.createElement("div");
   root.id = "root";
-  root.dataset["galleryGeometry"] = JSON.stringify([{ selector: "article", paddingLeft: 20, paddingTop: 16, fontSize: 12, maxWidth: 768 }]);
-  root.innerHTML = '<article style="padding: 16px 20px; font-size: 13px; max-width: 768px">Preview</article>';
+  root.dataset["galleryGeometry"] = JSON.stringify([{ selector: "article", paddingLeft: 20, paddingTop: 16, fontSize: 12, maxWidth: 768, maxHeight: 416 }]);
+  root.innerHTML = '<article style="padding: 16px 20px; font-size: 13px; max-width: 768px; max-height: 416px">Preview</article>';
   document.body.append(root);
   expect(measureSceneGeometry()).toEqual(["article[0].fontSize: got 13, expected 12 ±0.5"]);
   root.querySelector("article")!.style.fontSize = "12px";
   expect(measureSceneGeometry()).toEqual([]);
+  root.querySelector("article")!.style.maxHeight = "500px";
+  expect(measureSceneGeometry()).toEqual(["article[0].maxHeight: got 500, expected 416 ±0.5"]);
 });
 
 it("checks a content height floor with tolerance and rejects non-finite readings", () => {
@@ -83,4 +86,34 @@ it.each([[1400, 920], [1024, 777]])("checks responsive scene geometry at viewpor
   expect(measureSceneGeometry()).toEqual([]);
   button.remove();
   expect(measureSceneGeometry()).toEqual(["button: no matching elements", "button: no matching elements"]);
+});
+
+
+it("rejects a correctly sized control clipped by its scrolling pane", () => {
+  const root = document.createElement("div");
+  root.id = "root";
+  root.dataset["galleryGeometry"] = JSON.stringify([{ selector: "button", height: 32, visibleWithin: "section" }]);
+  root.innerHTML = "<section><button>Stop</button></section>";
+  document.body.append(root);
+  vi.spyOn(root.querySelector("section")!, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 100, 500, 400));
+  const button = vi.spyOn(root.querySelector("button")!, "getBoundingClientRect");
+  button.mockReturnValue(new DOMRect(20, 490, 80, 32));
+  expect(measureSceneGeometry()).toEqual(["button[0]: clipped outside section"]);
+  button.mockReturnValue(new DOMRect(20, 450, 80, 32));
+  expect(measureSceneGeometry()).toEqual([]);
+  button.mockReturnValue(new DOMRect(20, 110, 0, 0));
+  expect(measureSceneGeometry()).toContain("button[0]: clipped outside section");
+});
+
+
+it("measures only the headless switch in the Browser defaults capture", () => {
+  const root = document.createElement("div");
+  root.id = "root";
+  root.dataset["galleryGeometry"] = JSON.stringify(detailGeometry(accessSettingsDetails.defaults, { width: 1400, height: 900 }).filter((check) => check.selector.includes("[role=switch]")));
+  root.innerHTML = '<button role="switch">Window control</button><section aria-label="Headless browser"><button role="switch">Allow runs</button></section>';
+  document.body.append(root);
+  const buttons = root.querySelectorAll("button");
+  vi.spyOn(buttons[0]!, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 24, 24));
+  vi.spyOn(buttons[1]!, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 32, 18.4));
+  expect(measureSceneGeometry()).toEqual([]);
 });

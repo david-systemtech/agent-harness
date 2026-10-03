@@ -48,6 +48,7 @@ export {
   type ShellPlatform,
   type ShellPreview,
   type ShellSecrets,
+  type SecretAccess,
   type ShellService,
   type ShellStagedBuild,
   type ShellSystem,
@@ -59,6 +60,7 @@ export {
   type ShellWebViewState,
   type ShellWebViewKey,
   type ShellWindow,
+  type ShellWindowState,
 } from "./shell.js";
 export {
   BLOCKED_REASONS,

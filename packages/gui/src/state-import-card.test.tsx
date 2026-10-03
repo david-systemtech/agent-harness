@@ -9,6 +9,7 @@ const detection = (): StateImportDetection => ({
 });
 const opened = async (environment: Partial<ScriptedEnvironment> = {}, found = detection(), prepare?: (app: Awaited<ReturnType<typeof renderApp>>) => void) => {
   const app = await renderApp({ environments: [{ name: "desk", reach: "local", capabilities: ["stateImport"], ...environment }] }, { firstLaunch: true });
+  await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
   app.environment("desk").wire.answer("stateImport.detect", () => ({ result: found }));
   prepare?.(app);
   await screen.findByRole("region", { name: "Set up" });
@@ -81,6 +82,7 @@ describe("State import on Carry over", () => {
       ? { status: 401, json: async () => ({ code: "unauthorized", message: "The fixture grant is stale.", data: {} }) }
       : paired.world.fetch(url, request));
     const app = await paired.remount();
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     expect(app.runtime.local.read()).toMatchObject({ state: "failed", reason: "refused" });
     answerRun(app);
     await screen.findByRole("region", { name: "Set up" });
@@ -97,6 +99,7 @@ describe("State import on Carry over", () => {
       { name: "home", reach: "local" },
       { name: "desk", reach: "paired", capabilities: ["stateImport"] },
     ] }, { firstLaunch: true });
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     app.environment("desk").wire.answer("stateImport.detect", () => ({ result: detection() }));
     answerRun(app);
     await screen.findByRole("region", { name: "Set up" });
@@ -120,9 +123,9 @@ describe("State import on Carry over", () => {
     await app.user.click(section().getByRole("button", { name: "Import" }));
     await section().findByRole("heading", { name: "Import report" });
     expect(section().getByText(/secondary shares a projects folder with primary/)).toBeDefined();
-    expect(section().getByText("Font size: 24 (source: 100)")).toBeDefined();
+    expect(section().getByText("Font size: 20 (source: 100)")).toBeDefined();
     const relaunched = await app.remount();
-    expect(relaunched.presentation.values.read().textSize).toBe(24);
+    expect(relaunched.presentation.values.read().textSize).toBe(20);
   });
 
   it("does not show or detect state import without the capability flag", async () => {
@@ -196,7 +199,7 @@ describe("State import on Carry over", () => {
       });
     });
     const personal = within(await screen.findByRole("region", { name: "Personal" }));
-    await personal.findByText("5 sessions; 0 archived; 0 missing directory.");
+    expect(within(await personal.findByLabelText("Sessions")).getByText("Sessions").nextElementSibling?.textContent).toBe("5");
     await screen.findByRole("region", { name: "State import" });
     await app.user.click(section().getByRole("button", { name: "Import" }));
     await section().findByRole("heading", { name: "Import report" });
@@ -204,7 +207,7 @@ describe("State import on Carry over", () => {
     await act(async () => app.environment("desk").notice("state-import.finished", finished));
     expect(await screen.findByRole("region", { name: "Imported profile" })).toBeDefined();
     expect(await personal.findByRole("button", { name: "Import 1 new sessions" })).toBeDefined();
-    expect(await section().findByText("1 profiles; 0 banks; 0 routines; 0 instructions; 0 skill sources; 0 connections.")).toBeDefined();
+    expect(within(await section().findByLabelText("Source holdings")).getByText("Profiles").nextElementSibling?.textContent).toBe("1");
     expect(section().queryByText("Terminal-client state folder: /data/terminal")).toBeNull();
     expect(app.environment("desk").requests("carryOver.run")).toHaveLength(0);
   });
@@ -232,7 +235,7 @@ describe("State import on Carry over", () => {
     await app.user.click(section().getByRole("button", { name: "Dry run" }));
     expect(await section().findByRole("heading", { name: "Dry run report" })).toBeDefined();
     for (const name of ["Carried", "Re-enter", "Arriving in milestone 2", "Not carried"]) expect(section().getByRole("heading", { name })).toBeDefined();
-    for (const text of ["Accounts: 2", "Archived sessions: 3", "Pins: 4", "Groups: 5", "Forge accounts: 1", "Key-manager connections: 1", "Banks: 3", "Routines: 4", "Instructions: 5", "Skill sources: 6", "Always-on skills: 2", "Drafts: 1", "Dev sites: 2"]) expect(section().getByText(text)).toBeDefined();
+    for (const text of ["Accounts: 2", "Archived sessions: 3", "Pins: 4", "Groups: 5", "Forge accounts: 1", "Key-manager connections: 1", "Banks: 3", "Routines: 4", "Instructions: 5", "Skill sources: 6", "Always-on skills: 2", "Drafts: 1", "Dev sites: 2"]) expect(within(section().getByLabelText("Carried counts")).getByText(text.split(": ")[0] ?? "").nextElementSibling?.textContent).toBe(text.split(": ")[1]);
     expect(section().getByText("Local model (local)")).toBeDefined();
     expect(section().getByText("Model choices: 3")).toBeDefined();
     expect(section().getByText("Nightly digest: Its workspace is missing.")).toBeDefined();
@@ -253,7 +256,7 @@ describe("State import on Carry over", () => {
     await screen.findByRole("region", { name: "State import" });
     expect(section().getByText("Data folder: /data/source")).toBeDefined();
     expect(section().getByText("Terminal-client state folder: /data/terminal")).toBeDefined();
-    expect(section().getByText("2 profiles; 3 banks; 4 routines; 5 instructions; 6 skill sources; 7 connections.")).toBeDefined();
+    expect(within(section().getByLabelText("Source holdings")).getByText("Profiles").nextElementSibling?.textContent).toBe("2");
     expect(section().getByRole("button", { name: "Dry run" })).toBeDefined();
     expect(section().getByRole("button", { name: "Import" })).toBeDefined();
   });

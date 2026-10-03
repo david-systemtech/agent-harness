@@ -1,3 +1,4 @@
+import "../test/markdown-editor-dom.js";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import type { ResultOf } from "@agent-harness/contracts";
 import { describe, expect, it } from "vitest";
@@ -23,6 +24,7 @@ const scriptPreview = (desk: EnvironmentHandle) => {
 describe("the Instructions card in Set up", () => {
   it("seeds About my setup once across two runtimes on the same environment", async () => {
     const app = await renderApp({ environments: [{ name: "desk", reach: "local" }] }, { firstLaunch: true });
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     const desk = app.environment("desk");
     scriptInstructions(desk);
     const card = await openCard(app);
@@ -30,12 +32,14 @@ describe("the Instructions card in Set up", () => {
     expect(within(seed).getByText(/The orientation block at the start/)).toBeDefined();
     expect(desk.requests("instructions.create").map((request) => request.params["catalogueId"])).toEqual(["setup.about-my-setup"]);
     const next = await app.remount();
+    await next.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     await within(await openCard(next)).findByRole("region", { name: "About my setup" });
     expect(desk.requests("instructions.create")).toHaveLength(0);
   });
 
   it("shows the rendered Orientation preview read-only, switches it off, and reads done from the environment's check", async () => {
     const app = await renderApp({ environments: [{ name: "desk", reach: "local", setup: { instructions: { state: "needs-attention", reason: "The block could not render.", failing: ["instructions.orientation-renders"], actions: ["check-again"] } } }] }, { firstLaunch: true });
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     const desk = app.environment("desk");
     scriptInstructions(desk);
     scriptPreview(desk);
@@ -58,6 +62,7 @@ describe("the Instructions card in Set up", () => {
 
   it("creates Custom text without an origin, with all account chips on", async () => {
     const app = await renderApp({ environments: [{ name: "desk", reach: "local" }] }, { firstLaunch: true });
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     const desk = app.environment("desk");
     scriptInstructions(desk);
     const card = await openCard(app);
@@ -65,10 +70,12 @@ describe("the Instructions card in Set up", () => {
     await app.user.click(within(custom).getByRole("button", { name: "Write a custom instruction" }));
     const editor = await screen.findByRole("dialog", { name: "New instruction" });
     await app.user.type(within(editor).getByRole("textbox", { name: "Title" }), "My review habits");
-    await app.user.type(within(editor).getByRole("textbox", { name: "Markdown body" }), "**Read** the comments.");
+    await app.user.click(within(editor).getByRole("textbox", { name: "Markdown body" }));
+    await app.user.paste("**Read** the comments.");
     await app.user.click(within(editor).getByRole("button", { name: "Save instruction" }));
     const row = await within(card).findByRole("region", { name: "My review habits" });
-    expect(within(row).getByText("**Read** the comments.")).toBeDefined();
+    expect(within(row).getByText("Read", { selector: "strong" })).toBeDefined();
+    expect(row.textContent).toContain("Read the comments.");
     expect((within(row).getByRole("checkbox", { name: "All accounts, including future accounts" }) as HTMLInputElement).checked).toBe(true);
     expect((within(row).getByRole("checkbox", { name: "Main account" }) as HTMLInputElement).checked).toBe(true);
     expect((within(row).getByRole("checkbox", { name: /Other account/ }) as HTMLInputElement).checked).toBe(true);
@@ -81,6 +88,7 @@ describe("the Instructions card in Set up", () => {
 
   it("does not recreate a removed and dismissed seed when another runtime opens the step", async () => {
     const app = await renderApp({ environments: [{ name: "desk", reach: "local" }] }, { firstLaunch: true });
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     const desk = app.environment("desk");
     scriptInstructions(desk);
     const seed = await within(await openCard(app)).findByRole("region", { name: "About my setup" });
@@ -88,6 +96,7 @@ describe("the Instructions card in Set up", () => {
     await app.user.click(within(await screen.findByRole("dialog", { name: "Remove About my setup?" })).getByRole("button", { name: "Remove instruction" }));
     await waitFor(() => expect(screen.queryByRole("region", { name: "About my setup" })).toBeNull());
     const next = await app.remount();
+    await next.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     const card = await openCard(next);
     await within(card).findByRole("region", { name: "Suggested instructions" });
     await next.user.click(within(card).getByRole("button", { name: "Dismissed" }));
@@ -98,13 +107,14 @@ describe("the Instructions card in Set up", () => {
 
   it("ticks a catalogue entry into a copy with all accounts reached", async () => {
     const app = await renderApp({ environments: [{ name: "desk", reach: "local" }] }, { firstLaunch: true });
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     const desk = app.environment("desk");
     scriptInstructions(desk);
     const card = await openCard(app);
     const suggestions = await within(card).findByRole("region", { name: "Suggested instructions" });
     await app.user.click(within(suggestions).getByRole("checkbox", { name: "Read code from a fresh checkout" }));
     const row = await within(card).findByRole("region", { name: "Read code from a fresh checkout" });
-    expect(within(row).getByText("coding.fresh-checkout, version 1")).toBeDefined();
+    expect(within(row).getByText("coding.fresh-checkout")).toBeDefined();
     expect((within(row).getByRole("checkbox", { name: "All accounts, including future accounts" }) as HTMLInputElement).checked).toBe(true);
     expect((within(row).getByRole("checkbox", { name: "Main account" }) as HTMLInputElement).checked).toBe(true);
     expect(desk.requests("instructions.create").filter((request) => request.params["catalogueId"] === "coding.fresh-checkout")).toHaveLength(1);
@@ -112,6 +122,7 @@ describe("the Instructions card in Set up", () => {
 
   it.each(["keep", "replace"] as const)("opens the reused version comparison and resolves it by %s", async (choice) => {
     const app = await renderApp({ environments: [{ name: "desk", reach: "local" }] }, { firstLaunch: true });
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     scriptInstructions(app.environment("desk"), [ownedInstruction({ origin: { catalogueId: "coding.fresh-checkout", version: 1 }, newerVersion: 2 })], { to: "Updated source.", toVersion: 2 });
     const card = await openCard(app);
     const row = await within(card).findByRole("region", { name: "Review habits" });
@@ -139,6 +150,7 @@ describe("the Instructions card in Set up", () => {
 
   it("recognizes a renamed, switched-off seed by its origin", async () => {
     const app = await renderApp({ environments: [{ name: "desk", reach: "local" }] }, { firstLaunch: true });
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     const desk = app.environment("desk");
     scriptInstructions(desk, [ownedInstruction({ title: "My setup notes", enabled: false, origin: { catalogueId: "setup.about-my-setup", version: 1 } })]);
     const row = await within(await openCard(app)).findByRole("region", { name: "My setup notes" });
@@ -148,6 +160,7 @@ describe("the Instructions card in Set up", () => {
 
   it("reads the winning copy when another client's create wins the seed id", async () => {
     const app = await renderApp({ environments: [{ name: "desk", reach: "local" }] }, { firstLaunch: true });
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     const desk = app.environment("desk");
     scriptInstructions(desk);
     let won = false;

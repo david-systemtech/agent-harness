@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { AccountIdentity, AccountUsage } from "@agent-harness/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderApp, type RenderedApp, type ScriptedEnvironment } from "../test/harness.js";
 
 /**
@@ -96,6 +96,18 @@ describe("Accounts", () => {
     expect(within(screen.getByRole("region", { name: "Set up" })).getByRole("region", { name: "Carry over" })).toBeDefined();
   });
 
+  it("marks the default account and follows changes from another client", async () => {
+    const app = await opened({ desk: { accounts: [{ label: "personal" }, { label: "work" }], settings: { "accounts.defaultAccount": "account-2" } } });
+    const accounts = await openRow(app, "Accounts");
+    const work = await within(accounts).findByRole("region", { name: "work" });
+    const personal = within(accounts).getByRole("region", { name: "personal" });
+    await within(work).findByText("Default");
+    expect(within(personal).queryByText("Default")).toBeNull();
+    app.environment("desk").setSettings({ "accounts.defaultAccount": "account-1" });
+    await within(personal).findByText("Default");
+    expect(within(work).queryByText("Default")).toBeNull();
+  });
+
   it("offers the Claude Code sign-in on the environment's machine from accounts.probe, adopts it with accounts.adopt, and says a refusal in one line", async () => {
     const app = await opened({ desk: { accounts: [{ label: "work", directory: { kind: "owned", path: "/home/milo/.agent-harness/accounts/1" } }], ambient: { present: true, signedIn: true, identity: MILO } } });
     const desk = app.environment("desk");
@@ -124,26 +136,45 @@ describe("Accounts", () => {
     const desk = app.environment("desk");
     const accounts = await openRow(app, "Accounts");
     await app.user.click(within(accounts).getByRole("button", { name: "Add an account…" }));
-    const adding = await screen.findByRole("dialog", { name: "Add an account on desk" });
+    const adding = await screen.findByRole("region", { name: "Add an account on desk" });
     await app.user.type(within(adding).getByRole("textbox", { name: "Label for the new account" }), "personal{Enter}");
-    const signing = await screen.findByRole("dialog", { name: "Sign in: personal on desk" });
+    const signing = await screen.findByRole("region", { name: "Sign in: personal on desk" });
     desk.signIn("awaiting-code", { url: "https://claude.test/oauth/authorize?state=for-tests" });
+    await within(signing).findByRole("button", { name: "Copy terminal command" });
+    await app.user.click(within(signing).getByRole("button", { name: "Copy terminal command" }));
+    expect(app.shell.calls.filter(([member]) => member === "clipboard.writeText").at(-1)?.slice(1)).toEqual([within(signing).getByRole("region", { name: "Terminal fallback" }).querySelector("code")?.textContent]);
     await app.user.type(await within(signing).findByRole("textbox", { name: "Then paste the code it shows" }), "code-for-tests{Enter}");
     await waitFor(() => expect(desk.requests("accounts.signin.code").map((request) => request.params)).toEqual([expect.objectContaining({ accountId: "account-2", code: "code-for-tests" })]));
     desk.signIn("done");
     expect(await within(accounts).findByText("personal is signed in on desk.")).toBeDefined();
-    expect(screen.queryByRole("dialog", { name: "Sign in: personal on desk" })).toBeNull();
+    expect(within(signing).getByRole("button", { name: "Done" })).toBeDefined();
+    await app.user.click(within(signing).getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("region", { name: "Sign in: personal on desk" })).toBeNull();
+    expect(desk.requests("accounts.signin.cancel")).toHaveLength(0);
     await waitFor(async () => expect(facts(await within(accounts).findByRole("region", { name: "personal" }))["Status"]).toBe("signed in"));
 
     const work = within(accounts).getByRole("region", { name: "work" });
     await app.user.click(within(work).getByRole("button", { name: "Sign in again" }));
-    const again = await screen.findByRole("dialog", { name: "Sign in: work on desk" });
+    const again = await screen.findByRole("region", { name: "Sign in: work on desk" });
     await waitFor(() => expect(desk.requests("accounts.signin.start").map((request) => request.params)).toEqual([expect.objectContaining({ accountId: "account-1" })]));
     desk.signIn("awaiting-code", { url: "https://claude.test/oauth/authorize?state=again" });
     await within(again).findByRole("textbox", { name: "Then paste the code it shows" });
     await app.user.click(within(again).getByRole("button", { name: "Cancel the sign-in" }));
     expect(await within(accounts).findByText("The sign-in of work was cancelled.")).toBeDefined();
     expect(within(accounts).queryByText("personal is signed in on desk.")).toBeNull();
+  });
+
+  it("cancels an inline sign-in when Settings closes", async () => {
+    const app = await opened({ desk: { accounts: [{ label: "personal", status: { state: "expired", checkedAt: null, detail: null } }] } });
+    const accounts = await openRow(app, "Accounts");
+    const personal = await within(accounts).findByRole("region", { name: "personal" });
+    await app.user.click(within(personal).getByRole("button", { name: "Sign in again" }));
+    const signing = await within(accounts).findByRole("region", { name: "Sign in: personal on desk" });
+    const desk = app.environment("desk");
+    desk.signIn("awaiting-code", { url: "https://claude.test/sign-in" });
+    await within(signing).findByRole("textbox", { name: "Then paste the code it shows" });
+    await app.user.click(within(settings()).getByRole("button", { name: "Close Settings" }));
+    await waitFor(() => expect(desk.requests("accounts.signin.cancel")).toHaveLength(1));
   });
 
   it("relabels one with accounts.relabel, says a refusal in one line, and shows at once a relabel another client made", async () => {
@@ -261,37 +292,115 @@ const MODELS: ScriptedEnvironment["models"] = [
   { accountId: "account-2", models: [{ id: "claude-haiku-5", family: "haiku", tier: 1, efforts: [], label: null }] },
 ];
 
-/** A picker's options, each as it reads, and the one chosen. */
-const choices = (picker: HTMLElement) => ({
-  options: within(picker)
-    .getAllByRole("option")
-    .map((option) => option.textContent),
-  chosen: within(picker).getByRole("option", { selected: true }).textContent,
-});
+/** Open one stage of the defaults popup through its named control. */
+const openDefault = async (app: RenderedApp, defaults: HTMLElement, name: string) => {
+  await app.user.click(await within(defaults).findByRole("button", { name: new RegExp(`^${name}:`) }));
+  return screen.findByLabelText("New-session defaults");
+};
 
 describe("Default account and model", () => {
+  it("shows friendly names over ids and keeps model and effort choices staged while saving runtime defaults", async () => {
+    const app = await opened({ desk: { accounts: [{ label: "personal" }], models: MODELS } });
+    const defaults = await openRow(app, "Default account and model");
+    await app.user.click(await within(defaults).findByRole("button", { name: /^Model family:/ }));
+    const picker = await screen.findByLabelText("New-session defaults");
+    const model = await within(picker).findByRole("menuitem", { name: "Claude Opus 5" });
+    expect(within(model).getByText("claude-opus-5").className).toContain("font-mono");
+    expect(within(model).getByText("Claude Opus 5").textContent).toBe("Claude Opus 5");
+    await app.user.click(model);
+    await waitFor(() => expect(app.environment("desk").settings()["accounts.defaultModelFamily"]).toBe("opus"));
+    await app.user.click(within(picker).getByRole("menuitem", { name: "high" }));
+    await waitFor(() => expect(app.environment("desk").settings()["accounts.defaultEffort"]).toBe("high"));
+    expect(screen.getByLabelText("New-session defaults")).toBeDefined();
+  });
+
+  it("keeps quick choices and the searchable full catalogue available, and refreshes without writing defaults", async () => {
+    const app = await opened({ desk: { accounts: [{ label: "personal" }], models: [{ accountId: "account-1", models: Array.from({ length: 14 }, (_, index) => ({
+      id: `sample-model-${index + 1}`, family: `family-${index + 1}`, tier: index, efforts: ["low", "high"], label: `Sample model ${index + 1}`,
+    })) }], settings: { "accounts.defaultModelFamily": "family-1" } } });
+    const defaults = await openRow(app, "Default account and model");
+    const picker = await openDefault(app, defaults, "Model family");
+    expect(await within(picker).findByRole("menuitem", { name: "Sample model 1" })).toBeDefined();
+    expect(within(picker).queryByRole("menuitem", { name: "Sample model 7" })).toBeNull();
+    await app.user.click(within(picker).getByRole("checkbox", { name: "Quick choices only" }));
+    expect(within(picker).getByRole("menuitem", { name: "Sample model 7" })).toBeDefined();
+    await app.user.type(within(picker).getByRole("textbox", { name: "Search models" }), "sample-model-7");
+    expect(within(picker).getByRole("menuitem", { name: "Sample model 7" })).toBeDefined();
+    expect(within(picker).queryByRole("menuitem", { name: "Sample model 14" })).toBeNull();
+    const desk = app.environment("desk");
+    const before = desk.requests("models.list").length;
+    await app.user.click(within(picker).getByRole("menuitem", { name: "Refresh models" }));
+    await waitFor(() => expect(desk.requests("models.list").length).toBeGreaterThan(before));
+    expect(desk.requests("settings.update")).toHaveLength(0);
+    expect(desk.settings()["accounts.defaultModelFamily"]).toBe("family-1");
+  });
+
+  it("navigates dependency columns by keyboard and restores the trigger on Escape", async () => {
+    vi.stubGlobal("innerWidth", 1400);
+    try {
+      const app = await opened({ desk: { accounts: [{ label: "personal" }], models: MODELS } });
+      const defaults = await openRow(app, "Default account and model");
+      const picker = await openDefault(app, defaults, "Model family");
+      const model = await within(picker).findByRole("menuitem", { name: "Claude Opus 5" });
+      model.focus();
+      await app.user.keyboard("{Home}");
+      expect(document.activeElement).toBe(within(picker).getByRole("menuitem", { name: "The account's strongest model" }));
+      await app.user.keyboard("{ArrowDown}{Enter}");
+      await waitFor(() => expect(app.environment("desk").settings()["accounts.defaultModelFamily"]).toBe("opus"));
+      await app.user.keyboard("{Tab}");
+      expect(document.activeElement).toBe(within(picker).getByRole("menuitem", { name: "The model's own" }));
+      await app.user.keyboard("{End}{Enter}");
+      await waitFor(() => expect(app.environment("desk").settings()["accounts.defaultEffort"]).toBe("xhigh"));
+      for (const name of ["Accounts", "Models", "Effort"]) expect(within(picker).getByRole("group", { name })).toBeDefined();
+      expect(within(picker).getByRole("menuitem", { name: "xhigh" }).dataset["selected"]).toBe("true");
+      await app.user.keyboard("{Escape}");
+      await waitFor(() => expect(document.activeElement).toBe(within(defaults).getByRole("button", { name: "Model family: Claude Opus 5" })));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("moves keyboard focus to the model stage after choosing an account in a narrow popup", async () => {
+    const app = await opened({ desk: { accounts: [{ label: "personal" }], models: MODELS } });
+    const defaults = await openRow(app, "Default account and model");
+    const picker = await openDefault(app, defaults, "Default account");
+    const account = await within(picker).findByRole("menuitem", { name: "personal" });
+    account.focus();
+    await app.user.keyboard("{Enter}");
+    await waitFor(() => expect(app.environment("desk").settings()["accounts.defaultAccount"]).toBe("account-1"));
+    await waitFor(() => expect(document.activeElement).toBe(within(picker).getByRole("menuitem", { name: "The account's strongest model" })));
+  });
+
+  it("shows one dependency stage at a time in the narrow defaults dialog", async () => {
+    const app = await opened({ desk: { accounts: [{ label: "personal" }], models: MODELS } });
+    const defaults = await openRow(app, "Default account and model");
+    const picker = await openDefault(app, defaults, "Model family");
+    const model = await within(picker).findByRole("menuitem", { name: "Claude Opus 5" });
+    expect(within(picker).queryByRole("group", { name: "Effort" })).toBeNull();
+    await app.user.click(model);
+    await waitFor(() => expect(within(picker).queryByRole("group", { name: "Models" })).toBeNull());
+    expect(within(picker).getByRole("menuitem", { name: "high" })).toBeDefined();
+    await app.user.click(within(picker).getByRole("button", { name: "Back to models" }));
+    expect(within(picker).getByRole("menuitem", { name: "Claude Opus 5" }).dataset["selected"]).toBe("true");
+  });
+
   it("edits the default account, model family and effort from pickers fed by accounts.list and models.list, and the process idle time, each through settings.update", async () => {
     const app = await opened({ desk: { accounts: [{ label: "personal" }, { label: "work", status: { state: "signed-out", checkedAt: null, detail: null } }], models: MODELS } });
     const desk = app.environment("desk");
     const defaults = await openRow(app, "Default account and model");
-    const account = await within(defaults).findByRole("combobox", { name: "Default account" });
-    const family = within(defaults).getByRole("combobox", { name: "Model family" });
-    const effort = within(defaults).getByRole("combobox", { name: "Effort" });
-    await waitFor(() => expect(choices(account).options).toEqual(["The first account adopted or added", "personal", "work (signed out)"]));
-    expect(choices(account).chosen).toBe("The first account adopted or added");
-    await waitFor(() =>
-      expect(choices(family).options).toEqual(["The account's strongest model", "opus: Claude Opus 5 (claude-opus-5)", "sonnet: claude-sonnet-5", "haiku: claude-haiku-5"]),
-    );
-    // With no family set, a run takes the strongest model, whose efforts these are.
-    expect(choices(effort)).toEqual({ options: ["The model's own", "low", "medium", "high", "xhigh"], chosen: "The model's own" });
-
-    await app.user.selectOptions(account, "work (signed out)");
+    let picker = await openDefault(app, defaults, "Default account");
+    await within(picker).findByRole("menuitem", { name: "work (signed out)" });
+    expect(within(picker).getByRole("menuitem", { name: "The first account adopted or added" }).dataset["selected"]).toBe("true");
+    await app.user.click(within(picker).getByRole("menuitem", { name: "work (signed out)" }));
     await waitFor(() => expect(desk.settings()["accounts.defaultAccount"]).toBe("account-2"));
-    await app.user.selectOptions(family, "sonnet: claude-sonnet-5");
+    await app.user.click(within(picker).getByRole("menuitem", { name: "claude-sonnet-5" }));
     await waitFor(() => expect(desk.settings()["accounts.defaultModelFamily"]).toBe("sonnet"));
-    await waitFor(() => expect(choices(effort).options).toEqual(["The model's own", "low", "medium", "high"]));
-    await app.user.selectOptions(effort, "high");
+    await waitFor(() => expect(within(within(picker).getByRole("group", { name: "Effort" })).getAllByRole("menuitem").map((row) => row.textContent)).toEqual([
+      "The model's own", "lowReasoning effort for new sessions.", "mediumReasoning effort for new sessions.", "highReasoning effort for new sessions.",
+    ]));
+    await app.user.click(within(picker).getByRole("menuitem", { name: "high" }));
     await waitFor(() => expect(desk.settings()["accounts.defaultEffort"]).toBe("high"));
+    await app.user.keyboard("{Escape}");
     const idle = within(within(defaults).getByRole("group", { name: "Stop idle agent processes after minutes" })).getByRole("textbox");
     expect((idle as HTMLInputElement).value).toBe("30");
     await app.user.clear(idle);
@@ -304,10 +413,11 @@ describe("Default account and model", () => {
       { "accounts.defaultEffort": "high" },
       { "providers.processIdleMinutes": 45 },
     ]);
-    expect(choices(account).chosen).toBe("work (signed out)");
+    expect(within(defaults).getByRole("button", { name: "Default account: work (signed out)" })).toBeDefined();
 
     // Back to what runs take with none set.
-    await app.user.selectOptions(family, "The account's strongest model");
+    picker = await openDefault(app, defaults, "Model family");
+    await app.user.click(within(picker).getByRole("menuitem", { name: "The account's strongest model" }));
     await waitFor(() => expect(desk.settings()["accounts.defaultModelFamily"]).toBeNull());
   });
 
@@ -316,11 +426,12 @@ describe("Default account and model", () => {
       desk: { accounts: [{ label: "personal" }], models: MODELS.slice(0, 1), settings: { "accounts.defaultAccount": "account-9", "accounts.defaultModelFamily": "gpt", "accounts.defaultEffort": "max" } },
     });
     const defaults = await openRow(app, "Default account and model");
-    const account = await within(defaults).findByRole("combobox", { name: "Default account" });
-    await waitFor(() => expect(choices(account).chosen).toBe("account-9 (no longer held: runs take the first account)"));
-    expect(choices(within(defaults).getByRole("combobox", { name: "Model family" })).chosen).toBe("gpt (not offered: runs take the strongest model)");
-    const effort = choices(within(defaults).getByRole("combobox", { name: "Effort" }));
-    expect(effort).toEqual({ options: ["The model's own", "max (not offered: runs take the model's own)", "low", "medium", "high", "xhigh"], chosen: "max (not offered: runs take the model's own)" });
+    expect(await within(defaults).findByRole("button", { name: "Default account: account-9 (no longer held: runs take the first account)" })).toBeDefined();
+    expect(within(defaults).getByRole("button", { name: "Model family: gpt (not offered: runs take the strongest model)" })).toBeDefined();
+    const picker = await openDefault(app, defaults, "Effort");
+    expect(within(picker).getByRole("menuitem", { name: "max (not offered: runs take the model's own)" }).dataset["selected"]).toBe("true");
+    expect(within(picker).getByRole("menuitem", { name: "high" })).toBeDefined();
+
   });
 
   it("is read-only without admin with the capability's line, shows an unreachable environment's values as last read, and says a refused write in one line", async () => {
@@ -331,24 +442,24 @@ describe("Default account and model", () => {
     const laptop = await openRow(app, "Default account and model", "laptop");
     expect(await within(laptop).findByText("Read-only: This client was paired with laptop without the admin scope.")).toBeDefined();
     expect(within(laptop).getAllByText(/^Read-only:/)).toHaveLength(1);
-    await waitFor(() => expect(choices(within(laptop).getByRole("combobox", { name: "Effort" })).chosen).toBe("medium (not offered: runs take the model's own)"));
-    for (const name of ["Default account", "Model family", "Effort"]) expect(within(laptop).getByRole("combobox", { name }).hasAttribute("disabled"), name).toBe(true);
+    await within(laptop).findByRole("button", { name: "Effort: medium (not offered: runs take the model's own)" });
+    for (const name of ["Default account", "Model family", "Effort"]) expect(within(laptop).getByRole("button", { name: new RegExp(`^${name}:`) }).hasAttribute("disabled"), name).toBe(true);
     expect(within(within(laptop).getByRole("group", { name: "Stop idle agent processes after minutes" })).getByRole("textbox").hasAttribute("disabled")).toBe(true);
 
     const desk = await openRow(app, "Default account and model", "desk");
-    const effort = await within(desk).findByRole("combobox", { name: "Effort" });
-    await waitFor(() => expect(choices(effort).options).toContain("high"));
-    await app.user.selectOptions(effort, "high");
+    const picker = await openDefault(app, desk, "Effort");
+    await app.user.click(await within(picker).findByRole("menuitem", { name: "high" }));
     expect(await within(desk).findByText("Not saved: accounts.defaultEffort: an effort is a word.")).toBeDefined();
     expect(within(desk).getAllByText(/^Not saved:/)).toHaveLength(1);
 
+    await app.user.keyboard("{Escape}");
     const scripted = app.environment("laptop");
     scripted.discovery("nothing");
     scripted.server.drop();
     const cached = await openRow(app, "Default account and model", "laptop");
     expect(await within(cached).findByText(/^Unreachable since \d\d:\d\d: the values this window last read, read-only\.$/)).toBeDefined();
-    expect(choices(within(cached).getByRole("combobox", { name: "Effort" })).chosen).toBe("medium (not offered: runs take the model's own)");
-    expect(within(cached).getByRole("combobox", { name: "Effort" }).hasAttribute("disabled")).toBe(true);
+    expect(within(cached).getByRole("button", { name: "Effort: medium (not offered: runs take the model's own)" })).toBeDefined();
+    expect(within(cached).getByRole("button", { name: /^Effort:/ }).hasAttribute("disabled")).toBe(true);
     expect(within(cached).queryByText(/^Read-only:/)).toBeNull();
   });
 });

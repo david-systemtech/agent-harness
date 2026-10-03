@@ -11,16 +11,18 @@ import type {
   ShellNotifications,
   ShellPreview,
   ShellSecrets,
+  SecretAccess,
   ShellService,
   ShellSystem,
   ShellUpdate,
   ShellWindow,
+  ShellWindowState,
   ShellWebView,
   ShellDebuggerMessage,
   ShellWebViewState,
   ShellWebViewKey,
 } from "@agent-harness/client-runtime";
-import { channelOf, WEB_VIEW_DEBUG_CHANNEL, WEB_VIEW_DETACH_CHANNEL, WEB_VIEW_CHANNEL, WEB_VIEW_KEY_CHANNEL, DEEP_LINK_CHANNEL, NOTIFICATION_CHANNEL, type Answered, type HttpAnswer, type Told } from "../channels.js";
+import { channelOf, WINDOW_CHANNEL, SECRET_ACCESS_CHANNEL, WEB_VIEW_DEBUG_CHANNEL, WEB_VIEW_DETACH_CHANNEL, WEB_VIEW_CHANNEL, WEB_VIEW_KEY_CHANNEL, DEEP_LINK_CHANNEL, NOTIFICATION_CHANNEL, type Answered, type HttpAnswer, type Told } from "../channels.js";
 
 /**
  * The shell as the desktop gives it to its renderer: the members every
@@ -65,6 +67,21 @@ export const shellBridge = (ipc: PreloadIpc): DesktopShell => {
   const ask = <T>(member: Answered, ...args: unknown[]): Promise<T> => ipc.invoke(channelOf(member), ...args) as Promise<T>;
   const tell = (member: Told, ...args: unknown[]): void => ipc.send(channelOf(member), ...args);
 
+  const accessListeners = new Set<(state: SecretAccess) => void>();
+  let accessRevision = 0;
+  ipc.on(SECRET_ACCESS_CHANNEL, (_details, state) => {
+    if (state !== null && state !== "waiting" && state !== "denied") return;
+    accessRevision++;
+    for (const listener of [...accessListeners]) listener(state);
+  });
+  const windowListeners = new Set<(state: ShellWindowState) => void>();
+  ipc.on(WINDOW_CHANNEL, (_details, state) => {
+    if (typeof state !== "object" || state === null) return;
+    const value = state as ShellWindowState;
+    if (!["darwin", "win32", "linux"].includes(value.platform) || typeof value.focused !== "boolean" || typeof value.maximized !== "boolean" || typeof value.fullScreen !== "boolean") return;
+    for (const listener of [...windowListeners]) listener(value);
+  });
+
   const linkListeners = new Set<(url: string) => void>();
   const hand = (url: unknown) => {
     if (typeof url === "string") for (const listener of [...linkListeners]) listener(url);
@@ -102,6 +119,11 @@ export const shellBridge = (ipc: PreloadIpc): DesktopShell => {
 
   return {
     window: {
+      minimize: () => tell("window.minimize"),
+      toggleMaximize: () => tell("window.toggleMaximize"),
+      close: () => tell("window.close"),
+      state: () => ask("window.state"),
+      onChange: (listener) => { windowListeners.add(listener); return () => void windowListeners.delete(listener); },
       setTitle: (text) => tell("window.setTitle", text),
       focus: () => tell("window.focus"),
       setBadge: (badge) => tell("window.setBadge", badge),
@@ -146,13 +168,22 @@ export const shellBridge = (ipc: PreloadIpc): DesktopShell => {
       },
     },
     secrets: {
+      access: () => ask("secrets.access"),
+      onAccess: (listener) => {
+        accessListeners.add(listener);
+        const revision = accessRevision;
+        void ask<SecretAccess>("secrets.access").then((state) => {
+          if (revision === accessRevision && accessListeners.has(listener)) listener(state);
+        }, () => {});
+        return () => void accessListeners.delete(listener);
+      },
       get: (name) => ask("secrets.get", name),
       set: (name, secret) => ask("secrets.set", name, secret),
       delete: (name) => ask("secrets.delete", name),
       protection: () => ask("secrets.protection"),
     },
     localGrant: { read: () => ask("localGrant.read") },
-    service: { install: () => ask("service.install"), start: () => ask("service.start"), status: () => ask("service.status") },
+    service: { pendingUpdate: () => ask("service.pendingUpdate"), applyUpdateNow: () => ask("service.applyUpdateNow"), install: () => ask("service.install"), start: () => ask("service.start"), status: () => ask("service.status") },
     preview: { grant: (content) => ask("preview.grant", content) },
     update: { current: () => ask("update.current"), apply: (staged, when) => ask("update.apply", staged, when) },
     installer: { bundledServer: () => ask("installer.bundledServer") },
@@ -172,6 +203,7 @@ export const shellBridge = (ipc: PreloadIpc): DesktopShell => {
       back: (id) => tell("webView.back", id),
       forward: (id) => tell("webView.forward", id),
       reload: (id) => tell("webView.reload", id),
+      stop: (id) => tell("webView.stop", id),
       state: (id) => ask("webView.state", id),
       onChange: (listener) => {
         viewListeners.add(listener);

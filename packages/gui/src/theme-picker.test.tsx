@@ -92,6 +92,9 @@ describe("the shipped themes", () => {
     const app = await opened();
     const picker = await openTheme(app);
     const ui = controls(picker);
+    expect(within(picker).getByRole("region", { name: "Theme choices" })).toBeDefined();
+    expect(within(picker).getByRole("region", { name: "Theme seeds" })).toBeDefined();
+    expect(within(picker).getByRole("region", { name: "Preview and contrast" })).toBeDefined();
     expect(await within(picker).findByText("Default, on desk")).toBeDefined();
     expect(within(ui.shipped()).getAllByRole("radio").map((radio) => radio.closest("label")?.textContent)).toEqual(["Default", "Ember", "Lagoon"]);
     expect(ui.checked()).toEqual(["Default"]);
@@ -217,7 +220,10 @@ describe("saving", () => {
     const ui = controls(picker);
     const settings = screen.getByRole("region", { name: "Settings" });
     await app.user.click(within(settings).getByRole("radio", { name: "Light" }));
-    await app.user.selectOptions(within(settings).getByRole("combobox", { name: "Text size" }), "17 px");
+    const size = within(settings).getByRole("spinbutton", { name: "Text size" });
+    await app.user.clear(size);
+    await app.user.type(size, "17");
+    await app.user.tab();
     const preferences = { ...app.presentation.values.read() };
 
     await app.user.click(ui.radio("Ember"));
@@ -397,6 +403,7 @@ describe("where the theme cannot be written", () => {
 describe("on the Appearance card", () => {
   it("picks for the environment the checklist checks: another picked, Save writes to it, and the window keeps the home environment's theme", async () => {
     const app = await renderApp({ environments: [{ name: "desk", reach: "local" }, { name: "laptop", reach: "paired" }] }, { firstLaunch: true });
+    await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     const checklist = await screen.findByRole("region", { name: "Set up" });
     const rail = within(checklist).getByRole("navigation", { name: "Set up steps" });
     await within(rail).findByRole("img", { name: /^Appearance: / });

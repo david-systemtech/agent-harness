@@ -1,3 +1,4 @@
+import type { FakeShell } from "@agent-harness/client-runtime/testing";
 import type { Script, ScriptedWorld } from "@agent-harness/client-runtime/testing/scripted-environment";
 import type { LadderName } from "@agent-harness/theme";
 import type { ComponentType } from "react";
@@ -8,12 +9,15 @@ export interface SceneGeometry {
   readonly selector: string;
   /** Apply this measurement only at the named capture viewport width. */
   readonly viewport?: number;
+  /** Require the whole element inside this scrollport and the capture viewport. */
+  readonly visibleWithin?: string;
   readonly width?: number;
   readonly height?: number;
   readonly paddingLeft?: number;
   readonly paddingTop?: number;
   readonly fontSize?: number;
   readonly maxWidth?: number;
+  readonly maxHeight?: number;
   readonly tolerance?: number;
   /** Content may grow beyond a scene’s viewport-height floor. */
   readonly minimumHeight?: number;
@@ -29,8 +33,10 @@ export interface SceneModule {
   readonly default?: ComponentType<{ readonly ladder: LadderName }>;
   readonly script?: Script;
   /** Arrange readings or run events on each fresh world before the app mounts. */
-  readonly arrange?: (world: ScriptedWorld) => void;
+  readonly arrange?: (world: ScriptedWorld, shell: FakeShell) => void;
   readonly presentation?: Partial<PresentationValues>;
+  /** Run scene steps once the window and its event handlers have mounted. */
+  readonly activate?: () => void;
   readonly geometry?: readonly SceneGeometry[] | ((viewport: SceneViewport) => readonly SceneGeometry[]);
   /** Wait for asynchronously drawn pane content before measuring or capturing it. */
   readonly readySelector?: string;

@@ -132,7 +132,14 @@ export interface ElectronContents {
 export interface ElectronBrowserWindow extends ElectronWindow {
   addWebView(view: ElectronWebView): void;
   removeWebView(view: ElectronWebView): void;
-  on(name: "closed", listener: () => void): unknown;
+  minimize(): void;
+  maximize(): void;
+  unmaximize(): void;
+  close(): void;
+  isFocused(): boolean;
+  isMaximized(): boolean;
+  isFullScreen(): boolean;
+  on(name: "closed" | "focus" | "blur" | "maximize" | "unmaximize" | "enter-full-screen" | "leave-full-screen", listener: () => void): unknown;
   readonly webContents: ElectronContents;
   loadURL(url: string): Promise<void>;
 }
@@ -171,9 +178,13 @@ export interface ElectronWebView {
     close(): void;
     getURL(): string;
     reload(): void;
+    stop(): void;
+    isLoadingMainFrame(): boolean;
+    on(name: "did-frame-finish-load", listener: (details: unknown, isMainFrame: boolean) => void): unknown;
+    on(name: "did-start-navigation", listener: (details: { readonly isMainFrame: boolean; readonly isSameDocument: boolean }) => void): unknown;
     navigationHistory: { canGoBack(): boolean; canGoForward(): boolean; goBack(): void; goForward(): void };
     on(name: "before-input-event", listener: (details: Refusable, input: { readonly type: string; readonly key: string; readonly code: string; readonly control: boolean; readonly meta: boolean; readonly shift: boolean; readonly alt: boolean }) => void): unknown;
-    on(name: "did-navigate" | "did-navigate-in-page" | "did-stop-loading", listener: () => void): unknown;
+    on(name: "did-navigate" | "did-navigate-in-page" | "did-start-loading" | "did-stop-loading", listener: () => void): unknown;
   };
   setBounds(bounds: ViewBounds): void;
   setVisible(visible: boolean): void;
@@ -181,6 +192,9 @@ export interface ElectronWebView {
 
 /** The `BrowserWindow` options the desktop sets. */
 export interface WindowOptions {
+  titleBarStyle: "hidden";
+  frame?: boolean;
+  trafficLightPosition?: { readonly x: number; readonly y: number };
   title: string;
   width: number;
   height: number;
@@ -204,7 +218,7 @@ export interface DialogFilter {
   extensions: string[];
 }
 
-/** The `dialog` module, always modal to the window. */
+/** The native dialogs: file pickers attached to the window, and an asynchronous message. */
 export interface ElectronDialog {
   showOpenDialog(
     window: ElectronWindow,
@@ -237,6 +251,10 @@ export interface ElectronClipboard {
  */
 export interface ElectronSafeStorage {
   isEncryptionAvailable(): boolean;
+  /** macOS: initializes the Keychain provider on a worker thread. */
+  isAsyncEncryptionAvailable(): Promise<boolean>;
+  encryptStringAsync(plainText: string): Promise<Buffer>;
+  decryptStringAsync(encrypted: Buffer): Promise<{ result: string; shouldReEncrypt: boolean }>;
   /** Throws when encryption is not available. */
   encryptString(plainText: string): Buffer;
   /** Throws when encryption is not available, or `encrypted` was not encrypted under this key. */

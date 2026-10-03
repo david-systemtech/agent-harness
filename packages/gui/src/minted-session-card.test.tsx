@@ -10,6 +10,7 @@ const BankCard = (props: StepCardProps) => <MintedSessionCard {...props} subject
 
 const openCard = async (more: Partial<ScriptedEnvironment> = {}, draft = false, Card: ComponentType<StepCardProps> = BankCard) => {
   const app = await renderApp({ environments: [{ name: "desk", reach: "local", capabilities: ["setup"], setup: { "memory-bank": { state: "needs-attention", reason: "BANK.md is missing.", actions: ["write-it-myself", "start-over"] } }, ...more }] }, { firstLaunch: true, stepCards: { "memory-bank": Card } });
+  await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
   const env = app.environment("desk");
   // The setup.mint boundary creates an ordinary session, just as the environment's mint service does.
   env.wire.answer("setup.mint", async () => {
@@ -42,6 +43,8 @@ describe("the minted session on its card", () => {
     act(() => env.emit(id, "assistant.delta", { runId, itemId: "bank-text", fragments: [{ kind: "text", text: "Working on BANK.md. " }] }));
     await waitFor(() => expect(within(screen.getByRole("region", { name: "Transcript" })).getByRole("article", { name: "Reply" }).textContent).toContain("Working on BANK.md."));
     expect(screen.getByRole("status", { name: "Authoring status" }).textContent).toBe("running");
+    expect(screen.getByRole("region", { name: "Authoring conversation" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Set up: Memory bank" })).toBeDefined();
     await app.user.click(screen.getByRole("button", { name: "Open in the main window" }));
     await waitFor(() => expect(app.shown()?.sessionId).toBe(id));
     expect(screen.queryByRole("region", { name: "Set up" })).toBeNull();

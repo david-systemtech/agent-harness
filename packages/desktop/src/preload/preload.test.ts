@@ -89,6 +89,21 @@ describe("the preload bundle", () => {
     expect([...new Set(loaded.required)]).toEqual(["electron"]);
   });
 
+  it("carries browser Stop and loading state through the sandboxed bundle", async () => {
+    const state = { url: "https://example.org/", canGoBack: false, canGoForward: false, loading: true };
+    const loaded = preload({ "shell:webView.state": state });
+    const views = shellOf(loaded)["webView"]!;
+    views["stop"]!("view-1");
+    expect(loaded.told).toContainEqual(["shell:webView.stop", "view-1"]);
+    expect(await views["state"]!("view-1")).toEqual(state);
+    const heard: unknown[] = [];
+    const unsubscribe = views["onChange"]!((id: string, changed: unknown) => heard.push([id, changed])) as () => void;
+    loaded.deliver("shell:webView.changed", "view-1", state);
+    unsubscribe();
+    loaded.deliver("shell:webView.changed", "view-1", { ...state, loading: false });
+    expect(heard).toEqual([["view-1", state]]);
+  });
+
   it("exposes the shell's members as window.desktopShell, and nothing else", () => {
     const shell = shellOf(preload());
     expect(Object.keys(shell).sort()).toEqual([
@@ -111,15 +126,15 @@ describe("the preload bundle", () => {
       "webView",
       "window",
     ]);
-    expect(Object.keys(shell["window"] ?? {}).sort()).toEqual(["focus", "setBackgroundColour", "setBadge", "setTitle"]);
+    expect(Object.keys(shell["window"] ?? {}).sort()).toEqual(["close", "focus", "minimize", "onChange", "setBackgroundColour", "setBadge", "setTitle", "state", "toggleMaximize"]);
     expect(Object.keys(shell["dialogs"] ?? {}).sort()).toEqual(["openDirectory", "openFile", "openFileContents", "save"]);
     expect(Object.keys(shell["clipboard"] ?? {}).sort()).toEqual(["readImage", "readText", "writeText"]);
     expect(Object.keys(shell["network"] ?? {})).toEqual(["allow"]);
     expect(Object.keys(shell["deepLinks"] ?? {})).toEqual(["onOpen"]);
     expect(Object.keys(shell["notifications"] ?? {}).sort()).toEqual(["onActivate", "show"]);
-    expect(Object.keys(shell["secrets"] ?? {}).sort()).toEqual(["delete", "get", "protection", "set"]);
+    expect(Object.keys(shell["secrets"] ?? {}).sort()).toEqual(["access", "delete", "get", "onAccess", "protection", "set"]);
     expect(Object.keys(shell["localGrant"] ?? {})).toEqual(["read"]);
-    expect(Object.keys(shell["service"] ?? {}).sort()).toEqual(["install", "start", "status"]);
+    expect(Object.keys(shell["service"] ?? {}).sort()).toEqual(["applyUpdateNow", "install", "pendingUpdate", "start", "status"]);
     expect(Object.keys(shell["preview"] ?? {})).toEqual(["grant"]);
     expect(Object.keys(shell["update"] ?? {}).sort()).toEqual(["apply", "current"]);
     expect(Object.keys(shell["installer"] ?? {})).toEqual(["bundledServer"]);
