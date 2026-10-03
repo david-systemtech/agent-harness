@@ -82,7 +82,9 @@ docker compose logs environment
 
 For remote container pairing, run the published Compose file on a Linux host
 with Tailscale installed, signed in and running in kernel TUN mode (the default,
-with a `tailscale0` interface). Join the client machine to the same tailnet and
+with an interface whose name starts with `tailscale`, such as `tailscale0` or
+`tailscale1`). The detector takes a non-internal IPv4 address in `100.64.0.0/10`,
+checking the lowest-numbered interface first. Join the client machine to the same tailnet and
 allow TCP port 7433 in the tailnet policy and host firewall. The container
 shares the host network and discovers its Tailscale IPv4 address without a
 Tailscale CLI or daemon socket. Until the first client pairs, `docker compose
@@ -90,6 +92,16 @@ logs environment` prints a pairing link and code; use them in the desktop's
 **Set up > Your machines**. Loopback remains available and LAN binding stays off
 unless you enable it. This path requires the Linux host network; userspace
 Tailscale and Docker Desktop are unsupported.
+
+For an environment running directly on macOS, detection tries `tailscale` on
+PATH, then `/Applications/Tailscale.app/Contents/MacOS/Tailscale` for `ip -4`
+and `status --json`. Without a CLI address it checks `utun*` interfaces for
+an IPv4 address in Tailscale's range. This fallback is a heuristic: another VPN
+using the same range on a generic macOS tunnel cannot be distinguished without
+a CLI answer. **Your machines** distinguishes a missing
+installation from an installed app whose address could not be read. LAN choices
+prefer private IPv4, then unique-local IPv6, then other IPv6; an IPv6 choice
+warns that its address may change.
 
 A container never updates itself. Make `host-updater.sh` executable and
 schedule it on the Docker host every five minutes, as described in the
