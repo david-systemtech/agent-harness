@@ -292,7 +292,7 @@ describe("Default account and model", () => {
     await waitFor(() => expect(choices(effort).options).toEqual(["The model's own", "low", "medium", "high"]));
     await app.user.selectOptions(effort, "high");
     await waitFor(() => expect(desk.settings()["accounts.defaultEffort"]).toBe("high"));
-    const idle = within(within(defaults).getByRole("group", { name: "providers.processIdleMinutes" })).getByRole("textbox");
+    const idle = within(within(defaults).getByRole("group", { name: "Stop idle agent processes after minutes" })).getByRole("textbox");
     expect((idle as HTMLInputElement).value).toBe("30");
     await app.user.clear(idle);
     await app.user.type(idle, "45{Enter}");
@@ -333,7 +333,7 @@ describe("Default account and model", () => {
     expect(within(laptop).getAllByText(/^Read-only:/)).toHaveLength(1);
     await waitFor(() => expect(choices(within(laptop).getByRole("combobox", { name: "Effort" })).chosen).toBe("medium (not offered: runs take the model's own)"));
     for (const name of ["Default account", "Model family", "Effort"]) expect(within(laptop).getByRole("combobox", { name }).hasAttribute("disabled"), name).toBe(true);
-    expect(within(within(laptop).getByRole("group", { name: "providers.processIdleMinutes" })).getByRole("textbox").hasAttribute("disabled")).toBe(true);
+    expect(within(within(laptop).getByRole("group", { name: "Stop idle agent processes after minutes" })).getByRole("textbox").hasAttribute("disabled")).toBe(true);
 
     const desk = await openRow(app, "Default account and model", "desk");
     const effort = await within(desk).findByRole("combobox", { name: "Effort" });
@@ -385,8 +385,8 @@ describe("Usage", () => {
 
     const milo = await within(usage).findByRole("region", { name: "milo@example.test" });
     await waitFor(() => expect(pooled(milo)).toEqual(["personal on desk", "laptop milo on laptop"]));
-    expect(windows(milo)).toEqual([expect.stringMatching(/^5-hour 50%, resets \d\d:\d\d$/), "Week 20%"]);
-    expect(windows(within(usage).getByRole("region", { name: "work@example.test" }))).toEqual(["5-hour 95% out"]);
+    expect(windows(milo)).toEqual([expect.stringMatching(/^5-hour 50 50%, resets \d\d:\d\d$/), "Week 20 20%"]);
+    expect(windows(within(usage).getByRole("region", { name: "work@example.test" }))).toEqual(["5-hour 95 95% out"]);
     const unread = within(usage).getByRole("region", { name: "An account never read" });
     expect(pooled(unread)).toEqual(["spare on desk"]);
     expect(within(unread).getByText("The account is not signed in.")).toBeDefined();
@@ -401,7 +401,7 @@ describe("Usage", () => {
     laptop.server.drop();
     expect(await within(usage).findByText(/^laptop: Unreachable since \d\d:\d\d: its readings as this window last read them\.$/)).toBeDefined();
     expect(pooled(within(usage).getByRole("region", { name: "milo@example.test" }))).toEqual(["personal on desk", "laptop milo on laptop"]);
-    expect(windows(within(usage).getByRole("region", { name: "milo@example.test" }))[1]).toBe("Week 20%");
+    expect(windows(within(usage).getByRole("region", { name: "milo@example.test" }))[1]).toBe("Week 20 20%");
   });
 
   it("says when no account has a plan reading yet", async () => {
