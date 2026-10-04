@@ -55,6 +55,33 @@ async function fixture(mode = "current", captureCount = 1, phone?: { name: strin
         const bogus = { head: "test-head", version: "test-head-999", captures: [{ ...captures[0], api_url: `${base}/api/packages/example/generic/window-gallery/test-head-999/window-empty.dark.png` }] };
         comments.push({ id: mode === "spoofed" ? 999 : 1000, user: { id: mode === "spoofed" ? 7 : -2 }, body: '<!-- window-gallery ' + JSON.stringify(bogus) + ' -->' });
       }
+      if (mode.startsWith("sharded")) {
+        comments.splice(0);
+        const count = Math.ceil(captures.length / 400);
+        for (let index = 0; index < count; index++) {
+          const id = 123 + index, shardVersion = `test-head-${id}`;
+          const files = captures.slice(index * 400, (index + 1) * 400).map(item => ({ ...item, api_url: `${base}/api/packages/example/generic/window-gallery/${shardVersion}/${item.name}` }));
+          if (mode === "sharded-missing" && index === 0) continue;
+          const shard = { run: mode === "sharded-mixed-run" && index === 1 ? "another-run" : "capture-run", index: index + 1, count, total: captures.length };
+          if (mode === "sharded-invalid") shard.index = 3;
+          if (mode === "sharded-duplicate" && index === 1) files[0]!.name = captures[0]!.name;
+          const triplets = mode === "sharded-thread" ? files.map(file => `\n**${file.name}**\n\n| Baseline | Capture | Difference |\n| --- | --- | --- |\n| ${["baseline", "capture", "difference"].map(kind => `![${kind} ${file.name}](${base}/attachments/${file.name}-${kind})`).join(" | ")} |\n`).join("") : "";
+          comments.push({ id, user: { id: -2 }, body: triplets + '<!-- window-gallery ' + JSON.stringify({ head: "test-head", version: shardVersion, shard, captures: files }) + ' -->' });
+        }
+        if (mode === "sharded-uploading" || mode === "sharded-failed") {
+          const message = mode === "sharded-uploading" ? "Uploading captures…" : "Gallery upload failed during attachment window-empty.dark.png (HTTP 503).";
+          comments.push({ id: 125, user: { id: -2 }, body: `Window gallery for \`test-head\`. ${message}` });
+        }
+        if (mode === "sharded-duplicate-index") {
+          const replacement = comments[0]!.body.replaceAll("test-head-123", "test-head-125");
+          comments.push({ id: 125, user: { id: -2 }, body: replacement });
+        }
+        if (mode === "sharded-thread") {
+          const history = comments.map((comment, index) => ({ ...comment, id: 23 + index, body: comment.body.replaceAll(`test-head-${comment.id}`, `test-head-${23 + index}`).replaceAll("capture-run", "earlier-run") }));
+          comments.unshift(...history);
+          expect(Buffer.byteLength(JSON.stringify(comments))).toBeGreaterThan(4 * 1024 * 1024);
+        }
+      }
       response.end(JSON.stringify(mode === "unpaginated" ? [...Array.from({ length: 50 }, () => ({ body: "Earlier discussion" })), ...comments] : comments));
     } else if (request.url?.startsWith("/attachments/")) response.writeHead(401).end();
     else response.end(mode === "corrupt" ? Buffer.from("not an image") : image);
@@ -158,7 +185,7 @@ it("accepts a valid capture larger than 4 MiB within the gallery report budget",
 });
 
 
-it("accepts all 400 desktop captures allowed by a reviewed gallery report", async () => {
+it("accepts all 400 captures allowed by a reviewed gallery report", async () => {
   const f = await fixture("versioned", 400);
   await run("bash", [script, "42"], { env: f.env });
   expect(f.requests.filter((url) => url.startsWith("/api/packages/"))).toHaveLength(400);
@@ -177,7 +204,7 @@ it("accepts captures above the old 24 MiB total within the 48 MiB report budget"
 });
 
 
-it("refuses more than 400 desktop captures before downloading or writing baselines", async () => {
+it("refuses more than 400 captures before downloading or writing baselines", async () => {
   const f = await fixture("versioned", 401);
   await expect(run("bash", [script, "42"], { env: f.env })).rejects.toMatchObject({ stderr: expect.stringContaining("No gallery captures on the current PR head") });
   expect(f.requests.some((url) => url.startsWith("/api/packages/"))).toBe(false);
@@ -263,8 +290,52 @@ it.each([
   expect(existsSync(join(f.folder, "packages/gui/gallery/baselines"))).toBe(false);
 });
 
+it("accepts 472 captures across a complete independently bounded report set", async () => {
+  const f = await fixture("sharded", 472);
+  await run("bash", [script, "42"], { env: f.env });
+  expect(f.requests.filter(url => url.startsWith("/api/packages/"))).toHaveLength(472);
+  expect(readFileSync(join(f.folder, "packages/gui/gallery/baselines/window-empty.dark.png"))).toEqual(png);
+  expect(readFileSync(join(f.folder, "packages/gui/gallery/baselines/window-scene-471.dark.png"))).toEqual(png);
+});
 
-it("refuses phone shard exhaustion without spending unused desktop slots", async () => {
+it.each(["sharded-uploading", "sharded-failed"])("refuses an older complete run when the latest report is %s", async (mode) => {
+  const f = await fixture(mode, 472);
+  await expect(run("bash", [script, "42"], { env: f.env })).rejects.toMatchObject({ stderr: expect.stringContaining("Latest gallery publication is incomplete") });
+  expect(f.requests.filter(url => url.startsWith("/api/packages/"))).toEqual([]);
+  expect(existsSync(join(f.folder, "packages/gui/gallery/baselines"))).toBe(false);
+});
+
+it.each([
+  ["sharded-missing", "Incomplete gallery shard set"],
+  ["sharded-mixed-run", "Incomplete gallery shard set"],
+  ["sharded-invalid", "Invalid gallery shard counts"],
+  ["sharded-duplicate", "Duplicate gallery filename across shards"],
+  ["sharded-duplicate-index", "Duplicate gallery shard index"],
+])("refuses %s before downloading or writing any baseline", async (mode, message) => {
+  const f = await fixture(mode, 472);
+  await expect(run("bash", [script, "42"], { env: f.env })).rejects.toMatchObject({ stderr: expect.stringContaining(message) });
+  expect(f.requests.filter(url => url.startsWith("/api/packages/"))).toEqual([]);
+  expect(existsSync(join(f.folder, "packages/gui/gallery/baselines"))).toBe(false);
+});
+
+it("accepts a reviewed subset from both shards without downloading other captures", async () => {
+  const f = await fixture("sharded", 472);
+  await run("bash", [script, "42", "window-empty.dark.png", "window-scene-471.dark.png"], { env: f.env });
+  expect(f.requests.filter(url => url.startsWith("/api/packages/"))).toHaveLength(2);
+  expect(readFileSync(join(f.folder, "packages/gui/gallery/baselines/window-empty.dark.png"))).toEqual(png);
+  expect(readFileSync(join(f.folder, "packages/gui/gallery/baselines/window-scene-471.dark.png"))).toEqual(png);
+});
+
+it("accepts a reviewed subset from a 6400-capture changed-report thread with prior run history", async () => {
+  const f = await fixture("sharded-thread", 6400);
+  await run("bash", [script, "42", "window-empty.dark.png", "window-scene-6399.dark.png"], { env: f.env });
+  expect(f.requests.filter(url => url.startsWith("/api/packages/"))).toHaveLength(2);
+  expect(readFileSync(join(f.folder, "packages/gui/gallery/baselines/window-empty.dark.png"))).toEqual(png);
+  expect(readFileSync(join(f.folder, "packages/gui/gallery/baselines/window-scene-6399.dark.png"))).toEqual(png);
+});
+
+
+it("refuses phone shard exhaustion without spending unused desktop slots in an earlier combined report", async () => {
   const f = await fixture("phone-overflow", 401, { name: "phone-frame-drawer-phone-390.dark.png", width: 390, height: 844 });
   await expect(run("bash", [script, "42"], { env: f.env })).rejects.toMatchObject({ stderr: expect.stringContaining("No gallery captures on the current PR head") });
   expect(f.requests.some(url => url.startsWith("/api/packages/"))).toBe(false);

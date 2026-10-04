@@ -3,11 +3,12 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { chromium } from "playwright";
-import { capturePlan, sceneFiles } from "./capture-plan.js";
+import { capturePlan, captureShard, sceneFiles } from "./capture-plan.js";
 import { measureSceneGeometry } from "./geometry.js";
 import { waitForFloatingLayout } from "./floating-layout.js";
 import { compareCapture, geometryFailures, galleryFailed } from "./compare.js";
 import type { Measurement } from "./compare.js";
+import { observePreviewRequests, verifyPhonePreviewIsolation } from "./phone-preview-isolation.js";
 
 // This executable starts a server and Chromium. Its only execution site is a hosted CI runner.
 if (process.env["GITHUB_ACTIONS"] !== "true" || process.env["RUNNER_ENVIRONMENT"] !== "github-hosted") {
@@ -37,8 +38,11 @@ try {
   if (names.length === 0) throw new Error("The gallery has no scenes.");
   const plan = capturePlan(names);
   console.log(`Capture budget: ${plan.budget.desktop} desktop + ${plan.budget.phone} phone = ${plan.budget.total}/${plan.budget.limit}; ${plan.budget.remaining} reserved.`);
-  for (const { scene, ladder, viewport, name, platform, textSize } of plan.captures) {
+  const selected = captureShard(plan, process.env["GALLERY_SHARD"]);
+  const { shard } = selected;
+  for (const { scene, ladder, viewport, name, platform, textSize } of selected.captures) {
     const context = await browser.newContext({ viewport, deviceScaleFactor: 1, colorScheme: ladder, ...(platform === "web" && { isMobile: true, hasTouch: true }), reducedMotion: "reduce" });
+    const previewRequests = scene === "phone-pane-preview" ? await observePreviewRequests(context) : undefined;
     const page = await context.newPage();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -71,6 +75,10 @@ try {
         return Math.abs(actual - 16 * size / 14) <= 0.5 ? [] : [`html.fontSize: got ${actual}, expected ${16 * size / 14}`];
       }, textSize) : []),
     ];
+    if (previewRequests !== undefined) {
+      try { await verifyPhonePreviewIsolation(page, previewRequests); }
+      catch (error) { failures.push(`Preview isolation: ${error instanceof Error ? error.message : String(error)}`); }
+    }
     const baselinePath = resolve(import.meta.dirname, "baselines", `${name}.png`);
     let baseline: Buffer | undefined;
     try { baseline = await readFile(baselinePath); }
@@ -83,12 +91,7 @@ try {
   }
   await writeFile(resolve(output, "geometry.json"), JSON.stringify(geometry, null, 2));
   const pixelBlocking = true;
-  const shards = plan.shards.map(shard => {
-    const names = new Set(shard.captures.map(capture => capture.name));
-    return { name: shard.name, scenes: report.filter(row => names.has(row.name)) };
-  });
-  // Flat rows support a trusted publisher from before sharding while the tree still fits 400 captures.
-  await writeFile(resolve(output, "report.json"), JSON.stringify({ pixelBlocking, captureBudget: plan.budget, scenes: report, shards }, null, 2));
+  await writeFile(resolve(output, "report.json"), JSON.stringify({ pixelBlocking, captureBudget: selected.budget, shard, scenes: report }, null, 2));
   for (const scene of report) {
     for (const failure of scene.geometryFailures) console.error(`${scene.name}: ${failure}`);
     if (scene.pixelFailed) console.log(`${scene.name}: ${scene.status}, ${scene.differentPixels} pixels (${pixelBlocking ? "blocking" : "advisory"})`);

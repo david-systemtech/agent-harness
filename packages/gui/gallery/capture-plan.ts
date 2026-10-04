@@ -43,18 +43,38 @@ export function capturePlan(scenes: readonly string[]) {
     })),
   );
   const phone: CaptureCase[] = scenes.filter(scene => scene.startsWith("phone-")).flatMap(scene =>
-    // Continue uses the same full-width footer at both widths; keep its 390, text and keyboard cases.
-    PHONE_PROFILES.filter(profile => scene !== "phone-gallery-continue" || profile.suffix !== "phone-360").flatMap(({ suffix, viewport, textSize }) => (["light", "dark"] as const).map(ladder => ({
+    // Surface scenes carry the full matrix; scaffold and duplicate keyboard scenes keep one proof.
+    PHONE_PROFILES.filter(profile => {
+      if (scene === "phone-gallery-conversation") return profile.suffix === "phone-390";
+      if (scene === "phone-gallery-permission" || scene === "phone-gallery-continue" || scene === "phone-attention-keyboard") return profile.suffix === "phone-390-keyboard";
+      if (scene === "phone-attention-pending") return profile.suffix !== "phone-390-keyboard";
+      return true;
+    }).flatMap(({ suffix, viewport, textSize }) => (["light", "dark"] as const).map(ladder => ({
       scene, ladder, viewport, textSize, platform: "web", name: `${scene}-${suffix}.${ladder}`,
     }))),
   );
   const captures = [...desktop, ...phone];
   if (new Set(captures.map(c => c.name)).size !== captures.length) throw new Error("Duplicate gallery capture name.");
-  const shards = [{ name: "desktop", captures: desktop, limit: limits.desktop }, { name: "phone", captures: phone, limit: limits.phone }] as const;
-  for (const shard of shards) {
-    if (shard.captures.length > shard.limit) throw new Error(`Gallery capture budget exceeded: ${shard.name} shard has ${shard.captures.length}/${shard.limit} captures.`);
-  }
-  const limit = limits.desktop + limits.phone;
+  const shards = ([{ kind: "desktop", captures: desktop, limit: limits.desktop }, { kind: "phone", captures: phone, limit: limits.phone }] as const).flatMap(group => {
+    if (!Number.isInteger(group.limit) || group.limit < 1 || group.limit > 400) throw new Error("Invalid gallery report limit.");
+    const result = [];
+    for (let offset = 0; offset < group.captures.length; offset += group.limit) {
+      const captures = group.captures.slice(offset, offset + group.limit);
+      result.push({ id: `${group.kind}-${String(offset / group.limit + 1).padStart(3, "0")}`, captures,
+        budget: { desktop: group.kind === "desktop" ? captures.length : 0, phone: group.kind === "phone" ? captures.length : 0,
+          total: captures.length, limit: group.limit, remaining: group.limit - captures.length } });
+    }
+    return result;
+  });
+  if (shards.length > 100) throw new Error("Gallery shard count exceeds the hosted artifact listing limit.");
+  const limit = shards.reduce((total, shard) => total + shard.budget.limit, 0);
   const budget = { desktop: desktop.length, phone: phone.length, total: captures.length, limit, remaining: limit - captures.length };
-  return { captures, shards, budget };
+  return { captures, budget, shards };
+}
+
+/** Explicit selection keeps local capture and hosted jobs on the same bounded report. */
+export function captureShard(plan: ReturnType<typeof capturePlan>, selection: string | undefined) {
+  const selected = plan.shards.find(shard => shard.id === selection);
+  if (selected === undefined) throw new Error("Invalid gallery shard selection.");
+  return { ...selected, shard: { id: selected.id, index: plan.shards.indexOf(selected), count: plan.shards.length } };
 }
