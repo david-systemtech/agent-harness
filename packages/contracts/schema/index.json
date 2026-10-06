@@ -287,6 +287,10 @@
       "title": "ScopeGrantedPayload"
     },
     {
+      "path": "access/events/access.changed.json",
+      "title": "AccessChangedPayload"
+    },
+    {
       "path": "access/events/ceiling.changed.json",
       "title": "CeilingChangedPayload"
     },
@@ -3019,6 +3023,10 @@
       "title": "SettingsChangedNoticePayload"
     },
     {
+      "path": "web/notices/origins.updated.json",
+      "title": "WebOriginsUpdatedPayload"
+    },
+    {
       "path": "settings/band-id.json",
       "title": "SettingsBandId"
     },
@@ -3983,6 +3991,58 @@
       "title": "ByeReason"
     },
     {
+      "path": "methods/web.origins.get/params.json",
+      "title": "web.origins.get params"
+    },
+    {
+      "path": "methods/web.origins.get/result.json",
+      "title": "web.origins.get result"
+    },
+    {
+      "path": "methods/web.origins.get/error.json",
+      "title": "web.origins.get error"
+    },
+    {
+      "path": "methods/web.origins.set/params.json",
+      "title": "web.origins.set params"
+    },
+    {
+      "path": "methods/web.origins.set/result.json",
+      "title": "web.origins.set result"
+    },
+    {
+      "path": "methods/web.origins.set/response.json",
+      "title": "web.origins.set response"
+    },
+    {
+      "path": "methods/web.origins.set/error.json",
+      "title": "web.origins.set error"
+    },
+    {
+      "path": "methods/attention.push.key/params.json",
+      "title": "attention.push.key params"
+    },
+    {
+      "path": "methods/attention.push.key/result.json",
+      "title": "attention.push.key result"
+    },
+    {
+      "path": "methods/attention.push.key/error.json",
+      "title": "attention.push.key error"
+    },
+    {
+      "path": "methods/attention.push.test/params.json",
+      "title": "attention.push.test params"
+    },
+    {
+      "path": "methods/attention.push.test/result.json",
+      "title": "attention.push.test result"
+    },
+    {
+      "path": "methods/attention.push.test/error.json",
+      "title": "attention.push.test error"
+    },
+    {
       "path": "methods/attention.targets.list/params.json",
       "title": "attention.targets.list params"
     },
@@ -4281,6 +4341,22 @@
     {
       "path": "methods/access.sessions.setCeiling/error.json",
       "title": "access.sessions.setCeiling error"
+    },
+    {
+      "path": "methods/access.sessions.setAccess/params.json",
+      "title": "access.sessions.setAccess params"
+    },
+    {
+      "path": "methods/access.sessions.setAccess/result.json",
+      "title": "access.sessions.setAccess result"
+    },
+    {
+      "path": "methods/access.sessions.setAccess/response.json",
+      "title": "access.sessions.setAccess response"
+    },
+    {
+      "path": "methods/access.sessions.setAccess/error.json",
+      "title": "access.sessions.setAccess error"
     },
     {
       "path": "methods/access.log.list/params.json",
@@ -7455,6 +7531,43 @@
   ],
   "methods": [
     {
+      "name": "web.origins.get",
+      "scope": "read",
+      "kind": "query",
+      "stream": false,
+      "params": "methods/web.origins.get/params.json",
+      "result": "methods/web.origins.get/result.json",
+      "error": "methods/web.origins.get/error.json"
+    },
+    {
+      "name": "web.origins.set",
+      "scope": "admin",
+      "kind": "command",
+      "stream": false,
+      "params": "methods/web.origins.set/params.json",
+      "result": "methods/web.origins.set/result.json",
+      "response": "methods/web.origins.set/response.json",
+      "error": "methods/web.origins.set/error.json"
+    },
+    {
+      "name": "attention.push.key",
+      "scope": "read",
+      "kind": "query",
+      "stream": false,
+      "params": "methods/attention.push.key/params.json",
+      "result": "methods/attention.push.key/result.json",
+      "error": "methods/attention.push.key/error.json"
+    },
+    {
+      "name": "attention.push.test",
+      "scope": "read",
+      "kind": "query",
+      "stream": false,
+      "params": "methods/attention.push.test/params.json",
+      "result": "methods/attention.push.test/result.json",
+      "error": "methods/attention.push.test/error.json"
+    },
+    {
       "name": "attention.targets.list",
       "scope": "read",
       "kind": "query",
@@ -7648,6 +7761,16 @@
       "result": "methods/access.sessions.setCeiling/result.json",
       "response": "methods/access.sessions.setCeiling/response.json",
       "error": "methods/access.sessions.setCeiling/error.json"
+    },
+    {
+      "name": "access.sessions.setAccess",
+      "scope": "admin",
+      "kind": "command",
+      "stream": false,
+      "params": "methods/access.sessions.setAccess/params.json",
+      "result": "methods/access.sessions.setAccess/result.json",
+      "response": "methods/access.sessions.setAccess/response.json",
+      "error": "methods/access.sessions.setAccess/error.json"
     },
     {
       "name": "access.log.list",

@@ -121,13 +121,33 @@ continue when the client disconnects, hides a pane or switches sessions.
 
 ## Phone layout and input
 
-Below 640px show one visible conversation, a session drawer with shelves,
+Use one layout predicate for the frame, viewport fitting and phone/overlay
+styles: width below 640px, or a short touch layout with a coarse primary pointer,
+no hover, width 640–960px inclusive and layout height at most 500px. Thus rotation
+from 390×844 to 844×390 (and 360×740 to 740×360) keeps one visible conversation,
+the session drawer, active session, draft and live run. The bound keeps larger
+touch screens in the wide projection. Classify layout media, never the keyboard's
+reduced VisualViewport height or pinch-zoom dimensions. A non-touch desktop
+keeps its existing projection when its visual viewport shrinks.
+
+In the phone projection show a session drawer with shelves,
 search and actions, and a phone header with More, Settings and attention.
-Retain the desktop pane arrangement for returning to a wider viewport. Split
+Retain the desktop pane arrangement without overwriting it; restore it when
+returning to a genuinely wide non-phone viewport. Split
 is unavailable with a width reason. Below the existing 900px pane-width
 breakpoint, the side column is a sheet sized `min(480px, 85%)`; closing/hiding
 it retains terminal and delegated work. Drawers/sheets trap and restore focus
 and close predictably. Long titles and labels wrap without page overflow.
+
+The session drawer uses the same web-frame visible bounds, including keyboard
+height and visual offset, without another viewport observer. Opening Sessions
+focuses the non-input drawer; tapping Filter opens search. Results alone scroll
+in a bounded inner scroller with contained overscroll; Close, New session and
+footer actions stay reachable above the keyboard. At 390×480 visual bounds with
+offsetTop 120 in a tall layout, search/results and dismissal never scroll the
+document. Dismissal restores focus without a page jump. Selecting a result
+closes the drawer and preserves each session's draft and running work. Selected,
+running and waiting rows and explicit touch actions remain readable at text 20.
 
 Use look.md's abyss ground, panel cards, float overlays, hairline edges,
 rounded human controls and square machine output wells, existing icon names,
@@ -136,14 +156,63 @@ preference; text inputs are at least 16 CSS px. Hit areas are at least 44px,
 including icon buttons; tap actions replace hover-only controls without
 squeezing labels. Support enlarged text at 20 and ordinary pinch zoom.
 
+In the phone projection, the Mode chip opens a mode-only bottom sheet bounded by the
+visual viewport, including keyboard height. Each 44px-or-larger row wraps its
+label and description, marks the current selection, and disables modes above
+the connection ceiling with its existing reason. Close stays visible while
+only the choices scroll; focus is trapped and restored. An allowed selection
+sends the existing mode command once and closes only on success. A failure
+stays visible with retry guidance and retains the current value. Dismissal
+keeps the draft, session and conversation scroll; the desktop menu remains.
+
 Composer and status stay in the bottom flex region above the visible keyboard;
-only the transcript scrolls. Use `100dvh`, a VisualViewport fallback,
-`viewport-fit=cover` and `env(safe-area-inset-*)`. Scroll the active input/card
-into view. Preserve the activity/asks/composer order; notices never cover a
+the transcript owns conversation scrolling. One web-frame owner locks the phone
+web document/root and bounds the shell to VisualViewport height and offsetTop
+at scale 1, with `100dvh`/window-height fallback, `viewport-fit=cover` and
+`env(safe-area-inset-*)`. Keep unzoomed bounds during pinch zoom; remove locks,
+styles and listeners on wide mode or unmount. Focus scrolls only the owning
+scroller, never ancestors. Composer focus/keyboard opening explicitly repins
+the latest transcript line after resizing; follow scrollport/content resizing
+and streaming until deliberate scroll up. Jump to latest resumes following.
+A visual/layout height gap identifies keyboard occlusion. When both heights
+change together, a reduction of at least a quarter from the composer-focus
+height identifies opening; retain that reference through gradual resize events.
+Smaller bar resizes refresh unoccluded bounds without repinning, including
+after a keyboard close that retains Message focus.
+Reserve at least three normal text lines above the bottom dock while composing;
+retain that reservation through button taps to avoid moving a target on blur. Non-conversation
+controls stay above the conversation, and keyboard close retains draft/focus. Preserve the activity/asks/composer order; notices never cover a
 waiting card or composer. Send/Stop, Allow/Deny and Continue/Finish remain
 reachable at keyboard height. IME composition never sends early. Attachments,
 queue/status, plan/question/permission cards and tool/fork/rewind actions fit
 one column and are usable by touch.
+
+A pending request in the conversation dock is a compact summary with Details.
+Details opens the full command, reason, plan or questions in a bounded sheet
+inside the same web-frame viewport owner. Keep Close in its header and the
+existing answer verbs in a separate, non-scrolling bottom strip above the
+keyboard and safe inset; only request details, choices and notes scroll.
+At visual 390×480 and text 20, retain three readable transcript lines and
+reachable 44px Details, Close and answer controls. Closing/Escape preserves
+notes and question picks; answering removes the summary and restores composer
+focus with preventScroll. IME commit never answers early, in-flight answers
+cannot be submitted again, and reconnect reuses the existing answer identity.
+Denial/ceiling/delivery reasons remain available. The existing authoring
+conversation dialog retains its own bounded request and anchored decisions.
+
+Native reply/code selection and the OS copy menu remain available while reading
+history and receiving later stream output. Selecting transcript text pauses
+following, as scrolling up does; Jump to latest explicitly repins. Tool disclosure
+retains its per-call fold choices and changes only the transcript scroller, never
+the outer page or dock. Keep normal links, long press, pinch zoom and horizontal
+code-well scrolling; no custom swipe navigation, simulated haptics or global touch
+blocker. The locked phone root and transcript use `overscroll-behavior: none`
+to suppress scroll chaining and browser pull-to-refresh where supported. Capped
+input/detail wells remain independently scrollable with contained overscroll.
+Uncapped Markdown code contains horizontal overscroll only; vertical gestures
+continue to the transcript.
+CSS cannot promise suppression of every OS/browser refresh or rubberband gesture:
+record engines that still refresh with dated handset evidence under #1556.
 
 ## Browser replacements and Settings
 
@@ -153,7 +222,9 @@ input[type=file] or paste. Workspace directories are selected on the environment
 never represented as phone filesystem paths. Native window controls, local
 service/bootstrap, this computer's gh and desktop installer/updater stay absent
 with reasons. Browser bundle updates offer Reload, separately from environment
-Update now.
+Update now. Use the browser’s explicit reload action or the existing Reload client
+update offer instead of a synthetic refresh gesture. Keep explicit Copy controls
+and the selectable-text clipboard-denial fallback.
 
 Files/Diff/Documents/Tasks use existing methods and projections in the sheet.
 Markdown renders normally. HTML/SVG is a static sandboxed srcdoc snapshot with
@@ -245,6 +316,35 @@ and no notice over composer. Phone mode exposes browser capabilities rather
 than a fake desktop shell. Preserve desktop captures and the same publisher/
 acceptance validation. Starting allocation is 342 captures against the 400 cap;
 #1541 budgets the bounded subset or shards publication and acceptance together.
+#1636 additionally keeps the layout viewport at 390×844 while scripting a
+390×480 visual viewport with offsets 0 and 120, composer focus, streaming,
+reading/Jump to latest, browser-bar resizing, notices/cards and keyboard close.
+Focused tests also cover bar resizing after a focus-preserving close followed
+by gradual keyboard close/reopen, with visual-only and simultaneous height changes.
+Hosted geometry proves shell/dock/latest-line bounds, readable transcript and
+stable document/window scroll. Animated keyboards, browser-bar settings,
+rotation/insets, focus zoom, selection and Home Screen behavior require dated
+handset evidence in #1556 and never block builders.
+#1641 adds 32 bounded landscape captures: 844×390 and 740×360, text 16/20,
+dark/light, a conversation, long-card keyboard dock, Sessions drawer and composer
+details sheet. Keep layout bounds unchanged while the filled-keyboard visual
+height shrinks to the supported 330px rectangle (including the waiting notice,
+three normal reply lines, message/actions and safe reserve); overlay proofs use
+300px. The drawer result well grows with text size (at least 54px); compact
+vertical chrome leaves room while its footer scrolls independently down to a
+48px floor. Scheduled routines share the result scrollport so their four
+touch actions cannot consume fixed drawer height. Check a result hit area and
+both footer actions as well as
+Close. Both use offsetTop 8 and zero insets or 44px side/21px bottom insets. Check one
+projection, no page/horizontal overflow, three readable transcript lines,
+reachable Send/Stop and long-card decisions, bounded sheet/Close and trapped
+focus, and exactly one safe-area reserve at the dock edge. Focused transition
+tests prove portrait/landscape/portrait retains state, returning wide restores
+saved panes, and non-touch/zoom/keyboard-only changes never select phone layout.
+An open layout-resizing keyboard keeps the transcript reserve across rotation;
+the previous orientation supplies the closing-height reference until the new
+unoccluded bounds return.
+
 Surface owners supply separate scene/baseline modules and inspect hosted PR
 captures before landing; gallery evidence does not replace the real-client CI.
 
@@ -260,6 +360,8 @@ captures before landing; gallery evidence does not replace the real-client CI.
 | #1552 / #1553 | Attention webhook / push transports; consume shared hooks |
 | #1554 | README and phone/service runbooks, both presets side by side |
 | #1555 | Completed hosted browser regressions and release asset checks |
+| #1636 | Phone viewport/dock ownership, keyboard repin, focused following tests and bounded hosted keyboard scene; these Phone layout and Verification updates |
+| #1641 | Shared bounded landscape layout predicate, frame/viewport transitions, phone/overlay rules, landscape profiles/scenes/geometry and these layout/verification sections |
 | #1556 | One human phone checklist; no source edits, no builder/release dependency |
 
 Shared startup hooks stay with their owner; surface tickets own leaf modules

@@ -22,12 +22,12 @@ import { useProvider } from "../session/provider.js";
 import { useSettingsCommand } from "../settings/settings-command.js";
 import { useShellLines } from "../terminal/shell-lines.js";
 import { classes } from "../ui/classes.js";
+import { usePhoneFrame } from "../frame/phone-frame.js";
 import { IconButton } from "../ui/index.js";
-import { PromptCard } from "../prompt-card/prompt-card.js";
 import { QueueStrip } from "../queue/queued.js";
 import { RewoundStrip } from "../fork-rewind/rewound.js";
 import { Activity, BackgroundWork } from "./activity.js";
-import { useClock, useObservable, useRuntime } from "../window-context.js";
+import { useClock, useObservable, useRuntime, useShell } from "../window-context.js";
 import { MissingWorkspace, useGoneWorkspace } from "../workspace/missing.js";
 import { AttachmentChips, AttachmentPicker, useAttachments } from "./attachments.js";
 import { useBox } from "./box.js";
@@ -36,11 +36,14 @@ import { useSessionDraft } from "./session-draft.js";
 import { notWired, typedCommand, useSlashCommand, useWiredCommands } from "./slash-commands.js";
 import { useWorkspaceChecks, WorkspaceCheck, WorkspaceRow } from "./workspace-checks.js";
 import { useComposition } from "./composition.js";
-import { usePhoneViewport } from "./phone-viewport.js";
 import "./phone-conversation.css";
+import { StatusLine } from "../status/status-line.js";
+import { PromptCard } from "../prompt-card/prompt-card.js";
 import { usePromptWalk } from "./walk.js";
 
 export interface ComposerProps {
+  /** An authoring dialog gives parked prompts their own flexible space above this composer. */
+  readonly authoring?: boolean;
   readonly environmentId: string;
   readonly sessionId: string;
 }
@@ -86,7 +89,10 @@ export interface ComposerProps {
  * Each action it wires is offered to the palette with whether it can be
  * done now, as the runtime says: dim there with the line while it cannot.
  */
-export const Composer = ({ environmentId, sessionId }: ComposerProps) => {
+export const Composer = ({ environmentId, sessionId, authoring = false }: ComposerProps) => {
+  const { narrow } = usePhoneFrame();
+  const shell = useShell();
+  const compact = shell === undefined && narrow && !authoring;
   const runtime = useRuntime();
   const clock = useClock();
   // The connections' phases: the lock and the shell's members are asked again whenever one moves.
@@ -99,7 +105,6 @@ export const Composer = ({ environmentId, sessionId }: ComposerProps) => {
   const box = useBox();
   const { composing, ...composition } = useComposition();
   const above = useRef<HTMLDivElement>(null);
-  usePhoneViewport(above);
   useSessionDraft(environmentId, sessionId, projection, box);
   const sendKey = useFirstKey("composer.send");
   const newlineKey = useFirstKey("composer.newline");
@@ -115,14 +120,23 @@ export const Composer = ({ environmentId, sessionId }: ComposerProps) => {
     const field = box.field.current;
     if (field === null) return;
     let width = -1;
+    let frame: number | undefined;
     const observer = new ResizeObserver(([entry]) => {
       if (entry === undefined || entry.contentRect.width === width) return;
       width = entry.contentRect.width;
-      field.style.height = "0px";
-      field.style.height = `${Math.max(44, field.scrollHeight)}px`;
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      // Changing an observed height during delivery leaves notifications undelivered.
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        field.style.height = "0px";
+        field.style.height = `${Math.max(44, field.scrollHeight)}px`;
+      });
     });
     observer.observe(field);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
   }, [box.field]);
   const attachments = useAttachments({ environmentId, provider, say, insert: box.insert });
   const menus = useMenus({ environmentId, sessionId, provider, text: box.text, caret: box.caret });
@@ -237,13 +251,19 @@ export const Composer = ({ environmentId, sessionId }: ComposerProps) => {
   return (
     <>
       <div ref={above} data-composer-above>
-      <Activity environmentId={environmentId} sessionId={sessionId} stopping={liveRunId !== undefined && interruptAsked === liveRunId} />
+      {!authoring && <Activity environmentId={environmentId} sessionId={sessionId} stopping={liveRunId !== undefined && interruptAsked === liveRunId} />}
       <RewoundStrip />
-      {gone === undefined && <WorkspaceRow environmentId={environmentId} sessionId={sessionId} />}
-      <PromptCard environmentId={environmentId} sessionId={sessionId} />
+      {!authoring && gone === undefined && !compact && <WorkspaceRow environmentId={environmentId} sessionId={sessionId} />}
+      {!authoring && <PromptCard environmentId={environmentId} sessionId={sessionId} />}
       <BackgroundWork environmentId={environmentId} sessionId={sessionId} />
       <QueueStrip />
+      {narrow && !compact && gone === undefined && (!authoring || runs.state !== "parked") && <div className="px-3"><WorkspaceCheck view={checks} sendFailure={sendFailure} sending={sending} /></div>}
       </div>
+      {compact && <div role="toolbar" aria-label="Conversation controls" data-phone-composer-toolbar>
+        <WorkspaceRow environmentId={environmentId} sessionId={sessionId} compact />
+        <WorkspaceCheck view={checks} sendFailure={sendFailure} sending={sending} compact />
+        <StatusLine environmentId={environmentId} sessionId={sessionId} compact />
+      </div>}
       <KeyContext context="composer" conditions={conditions}>
         <ComposerKeys
           send={submit}
@@ -265,9 +285,10 @@ export const Composer = ({ environmentId, sessionId }: ComposerProps) => {
           }}
         />
         {gone === undefined && (
-          <div className="shrink-0 px-3 pb-1" onDragOver={(event) => { attachments.dragging(event); if (event.dataTransfer.types.includes("Files")) setFileHover(true); }} onDragLeave={(event) => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setFileHover(false); }} onDrop={(event) => { setFileHover(false); attachments.dropped(event); }}>
+          <div data-composer-editor className="shrink-0 px-3 pb-1" onDragOver={(event) => { attachments.dragging(event); if (event.dataTransfer.types.includes("Files")) setFileHover(true); }} onDragLeave={(event) => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setFileHover(false); }} onDrop={(event) => { setFileHover(false); attachments.dropped(event); }}>
             {lock.locked && <p className="pb-1 text-xs text-amber">Locked: {lock.reason}</p>}
-            <WorkspaceCheck view={checks} sendFailure={sendFailure} sending={sending} />
+            {!narrow && (!authoring || runs.state !== "parked") && <WorkspaceCheck view={checks} sendFailure={sendFailure} sending={sending} />}
+            {compact && line !== undefined && <p role="status" className="pb-1 text-xs text-ink-muted">{line}</p>}
             <div data-composer-card className={classes("relative rounded-[10px] border border-hairline-strong bg-wash focus-within:ring-3 focus-within:ring-beam/50", fileHover && "ring-2 ring-beam ring-offset-2 ring-offset-abyss")}>
               {menu !== null && <MenuList id={menus.listId} menu={menu} highlighted={at} choose={choose} />}
               <AttachmentChips attachments={attachments} />
@@ -287,7 +308,7 @@ export const Composer = ({ environmentId, sessionId }: ComposerProps) => {
                 rows={1}
                 className="block max-h-[35vh] min-h-[44px] w-full resize-none overflow-y-auto bg-transparent px-3 py-2.5 text-sm leading-relaxed text-ink outline-none"
               />
-              <div className="flex items-center gap-2 px-2 pb-2">
+              <div data-composer-actions className="flex items-center gap-2 px-2 pb-2">
                 <IconButton label="Attach files" keys={pasteKey === undefined ? "/attach" : `/attach · ${pasteKey} paste`} onClick={attachments.choose}>
                   <Paperclip aria-hidden="true" />
                 </IconButton>
@@ -303,7 +324,7 @@ export const Composer = ({ environmentId, sessionId }: ComposerProps) => {
                 />
               </div>
             </div>
-            {line !== undefined && <p role="status" className="pt-1 text-xs text-ink-muted">{line}</p>}
+            {!compact && line !== undefined && <p role="status" className="pt-1 text-xs text-ink-muted">{line}</p>}
           </div>
         )}
       </KeyContext>

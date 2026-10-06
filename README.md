@@ -1,11 +1,11 @@
 # agent-harness
 
 agent-harness is a place to work with coding agents across your machines.
-Start a session in the desktop window or terminal UI, give it a workspace,
+Start a session in the desktop window, terminal UI or phone browser, give it a workspace,
 and follow the agent's work alongside files, diffs and terminals.
 
 Each machine runs an **environment**: a background service that owns its
-accounts, workspaces and sessions. The desktop window and terminal UI
+accounts, workspaces and sessions. The desktop window, terminal UI and web client
 connect to it. Closing a window leaves the work running, and another client
 can pick up the same session. You can pair a client with environments on
 other machines too.
@@ -124,6 +124,61 @@ schedule it on the Docker host every five minutes, as described in the
 [host-side updater instructions](docs/host-updater.md). It follows the
 environment's update settings, checks the replacement, and rolls back if
 it cannot start. Keep the compose file and updater together.
+
+## Connect from a phone
+
+Each packaged headless server and container includes the web client; no
+separate frontend install is needed. Use a release containing the phone client.
+Join your phone to the environment's tailnet with Tailscale and open its
+**configured HTTPS address**, including its port, such as
+`https://<device>.<tailnet>.ts.net:8443/`. The environment operator supplies
+this address and certificate; [the phone guide](docs/phone.md) gives the
+headless-server and HTTPS configuration recipe. Plain tailnet HTTP remains
+usable by desktop/TUI clients but cannot provide service workers, eligible
+web-app installation, Web Push, Async Clipboard or in-page camera scanning.
+A manual Home Screen shortcut does not enable those capabilities.
+
+On the environment machine, run one of these with the packaged CLI or the
+installed `agent-harness` shim, as the environment's OS user:
+
+```sh
+# Everything for your own devices, a phone included:
+agent-harness pair --preset own-client
+# Or choose restricted access:
+agent-harness pair --preset phone
+```
+
+| Choice | What the phone receives |
+| --- | --- |
+| **My own client — everything for my own devices (phone included)** (`own-client`) | Every scope: read and organise sessions, drive runs and answer prompts, use terminals, files and diffs, and administer the environment. Ceiling `bypassPermissions`: run without permission checks; the denylist still applies. |
+| **Phone — restricted** (`phone`) | `read`, `sessions:write`, `runs:drive`: read and organise sessions, drive runs and answer prompts, without terminal or admin authority. Ceiling `acceptEdits`: accept file edits; ask before other actions when the provider supports it. Bypass permissions is unavailable. |
+| **Custom** (`custom`) | Choose scopes and a ceiling to raise or lower access for a single pairing, within the minter's grant. Defaults to `read` (read sessions) and `plan` (plan without making changes). |
+
+In Settings → Your machines → Pair another client, My own client is listed
+first and selected by default when your current client can grant it. Choose
+it for everything on your own phone; Phone is the restricted choice. Custom
+can raise or lower the scopes and ceiling of the new pairing.
+
+Open the printed link or scan its QR with the phone's camera. Codes last ten
+minutes and work once. Check the displayed scopes and ceiling: an existing
+My own client link keeps its full grant in a browser; there is no automatic
+downgrade. For selected extra scopes, deliberately mint a Custom code and
+re-pair as [the guide](docs/phone.md#choose-the-grant) explains.
+
+After pairing, open or create a session, choose its environment workspace,
+and send a prompt. The environment must have a signed-in provider account.
+With an admin grant, use **Settings > Accounts > Sign in** or **Set up**;
+open the verification page, then return and send its code. With Phone's
+restricted grant, have a trusted admin set up the account or explicitly
+re-pair with admin. Files, Diff and terminals require `terminal`.
+
+Pairing credentials are saved in JavaScript-readable, origin-scoped browser
+storage. Home Screen installation may require its own pairing. Use **Forget**
+to erase a connection; revoke a lost phone from a trusted client's **Access**
+row. The guide covers iPhone/Android installation, explicit **Enable push** /
+**Test push**, notification denial, configured webhook-to-Matrix fallback and
+troubleshooting. [The web-client checklist](docs/agents/web-client-checklist.md)
+distinguishes hosted CI evidence from checks on an actual handset.
 
 ## Updates
 

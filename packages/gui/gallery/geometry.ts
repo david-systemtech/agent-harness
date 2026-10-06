@@ -12,9 +12,27 @@ export function measureSceneGeometry(): string[] {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
       const visibility: string[] = [];
+      if (check.hitTestable === true) {
+        const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+        const hit = x >= 0 && x < window.innerWidth && y >= 0 && y < window.innerHeight
+          ? document.elementFromPoint(x, y) : null;
+        if (rect.width <= 0 || rect.height <= 0 || hit === null || !element.contains(hit)) {
+          visibility.push(`${check.selector}[${index}]: not hit-testable at its centre`);
+        }
+      }
       if (check.contentFits === true && (element.scrollWidth > element.clientWidth + (check.tolerance ?? 0.5)
         || element.scrollHeight > element.clientHeight + (check.tolerance ?? 0.5))) {
         visibility.push(`${check.selector}[${index}]: content overflows its bounds`);
+      }
+      if (check.minimumTop !== undefined && rect.top < check.minimumTop - (check.tolerance ?? 0.5)) {
+        visibility.push(`${check.selector}[${index}].top: got ${rect.top}, expected at least ${check.minimumTop}`);
+      }
+      if (check.below !== undefined) {
+        const preceding = Array.from(document.querySelectorAll(check.below));
+        if (preceding.length === 0) visibility.push(`${check.below}: no matching elements`);
+        else if (preceding.some(row => rect.top < row.getBoundingClientRect().bottom - (check.tolerance ?? 0.5))) {
+          visibility.push(`${check.selector}[${index}]: overlaps ${check.below}`);
+        }
       }
       if (check.visibleWithin !== undefined) {
         if (style.visibility === "hidden" || style.visibility === "collapse") {

@@ -6,23 +6,12 @@ export const arrangeWeb: SceneModule["arrangeWeb"] = world => {
   env.startRun(env.sessionId(), "Check the receipt totals.");
   env.openPrompt(env.sessionId(), { kind: "permission", summary: "Run the receipt-checking command", toolName: "Bash", input: { command: "printf receipts" } });
 };
-export const readySelector = '[aria-label="Allow once"]';
-export const activate = () => {
-  // Reveal the decision as a person scrolling a tall card would, including at size 20.
-  const reveal = () => {
-    const button = document.querySelector('[aria-label="Allow once"]');
-    if (button === null) return;
-    button.scrollIntoView({ block: "nearest" }); observer.disconnect();
-  };
-  const observer = new MutationObserver(reveal);
-  observer.observe(document.getElementById("root")!, { childList: true, subtree: true });
-  reveal();
-  return () => observer.disconnect();
-};
+export const readySelector = '[aria-label="Allow once"][data-permission-revealed]';
+export { revealPermissionDecision as activate } from "../phone-first-slice.js";
 export const geometry = [
   { selector: '[data-web-client] :is(button, input, select, textarea)', renderedOnly: true, minimumWidth: 44, minimumHeight: 44 },
   { selector: '[aria-label="Stop"]', minimumWidth: 44, minimumHeight: 44, visibleWithin: "[data-web-client]" },
   { selector: '[aria-label="Deny"]', minimumWidth: 44, minimumHeight: 44 },
   { selector: '[aria-label="Transcript"]', minimumHeight: 44, visibleWithin: "[data-web-client]" },
-  { selector: '[aria-label="Allow once"]', minimumWidth: 44, minimumHeight: 44, visibleWithin: "[data-composer-above]" },
+  { selector: '[aria-label="Allow once"]', minimumWidth: 44, minimumHeight: 44, visibleWithin: ".phone-prompt-sheet" },
 ];

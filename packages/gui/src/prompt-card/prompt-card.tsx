@@ -3,15 +3,18 @@ import { choiceRows, noteOf, oneLine, rowAnswer, ttlWords, type CapabilityAnswer
 import { describeDenylistMatch, type ParkedPrompt, type PromptAnswerInput, type PromptKind, type PromptOpenedPayload } from "@agent-harness/contracts";
 import { ChevronDown, ChevronUp, ClipboardList, MessageCircleQuestionMark, ShieldAlert, StickyNote } from "lucide-react";
 import { Kbd } from "../ui/kbd.js";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createContext, use, useEffect, useId, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { useEnvironmentCountdown } from "../environment-countdown.js";
 import { useInFocusedPane } from "../grid/grid.js";
 import { KeyContext, useEscapeStep, useFirstKey, useKeyAction } from "../keys/key-dispatch.js";
 import { Markdown } from "../transcript/markdown.js";
 import { Button, Textarea } from "../ui/index.js";
 import { classes } from "../ui/classes.js";
-import { useObservable, useRuntime } from "../window-context.js";
+import { useObservable, useRuntime, useShell } from "../window-context.js";
 import { Answer, PromptEscape, PromptTooltip } from "./answer-button.js";
+import { usePhoneOverlay } from "../ui/phone.js";
+import { PhonePromptDetails } from "./phone-details.js";
+import "./phone-details.css";
 import { useAnswering } from "./answering.js";
 import { QuestionForm, questionAnswers, questionsOf, type Picks } from "./question.js";
 
@@ -29,6 +32,15 @@ interface CardFields {
 }
 
 const NO_FIELDS: CardFields = { note: "", picks: {} };
+
+type HeldFields = readonly [ReadonlyMap<string, CardFields>, Dispatch<SetStateAction<ReadonlyMap<string, CardFields>>>];
+const FieldsContext = createContext<HeldFields | null>(null);
+
+/** A conversation dialog may close without discarding answers still being composed. */
+export const PromptFieldsProvider = ({ children }: { readonly children: ReactNode }) => {
+  const fields = useState<ReadonlyMap<string, CardFields>>(new Map());
+  return <FieldsContext value={fields}>{children}</FieldsContext>;
+};
 
 /**
  * The parked prompt's card (docs/specs/gui.md, "A session pane"; story 10;
@@ -64,7 +76,8 @@ export const PromptCard = ({ environmentId, sessionId }: PromptCardProps) => {
   const projection = useObservable(useMemo(() => runtime.projections.session(environmentId, sessionId), [runtime, environmentId, sessionId]));
   const parked = projection.parkedPrompts;
   const answering = useAnswering(environmentId, sessionId, parked);
-  const [filled, setFilled] = useState<ReadonlyMap<string, CardFields>>(new Map());
+  const localFields = useState<ReadonlyMap<string, CardFields>>(new Map());
+  const [filled, setFilled] = use(FieldsContext) ?? localFields;
   // What was filled in goes with its prompt once it is no longer parked.
   useEffect(() => {
     const still = new Set(parked.map((prompt) => prompt.promptId));
@@ -127,6 +140,13 @@ const ParkedCard = ({ environmentId, parked, place, capability, fields, setField
   const { prompt } = parked;
   const self = useRef<HTMLElement>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [details, setDetails] = useState(false);
+  const narrow = usePhoneOverlay();
+  const shell = useShell();
+  // Authoring dialogs already bound their transcript and decision footer together.
+  const inConversationDialog = use(FieldsContext) !== null;
+  const phone = narrow && shell === undefined && !inConversationDialog;
+  useEffect(() => { if (!phone) setDetails(false); }, [phone]);
   const bodyId = useId();
   const noteId = useId();
   const denyKey = useFirstKey("permission.deny");
@@ -152,7 +172,9 @@ const ParkedCard = ({ environmentId, parked, place, capability, fields, setField
   const settle = (outcome: RowOutcome) => {
     if (capability.status === "absent") return say(`Not answered: ${capability.message}`);
     if (outcome.kind === "say") return say(outcome.line);
+    const composer = phone && !details ? self.current?.closest("[data-web-client]")?.querySelector<HTMLElement>('[aria-label="Message"]') : undefined;
     answer(outcome.answer);
+    composer?.focus({ preventScroll: true });
   };
   const choose = (row: ChoiceRow | undefined) => settle(rowAnswer(prompt, row, fields.note));
   const allow = () => {
@@ -163,11 +185,58 @@ const ParkedCard = ({ environmentId, parked, place, capability, fields, setField
   const deny = () => (prompt.kind === "question" ? settle({ kind: "answer", answer: { decision: "deny", ...noteOf(fields.note) } }) : choose(rows[0]));
   const dim = capability.status === "absent";
   const permission = prompt.kind === "permission";
-  const pinnedDecision = permission || prompt.kind === "plan";
+  const question = prompt.kind === "question";
+  const pinnedDecision = permission || prompt.kind === "plan" || question;
   const shownLine = line ?? (dim ? capability.message : undefined);
   const facts = [place, ttl].filter((fact) => fact !== undefined).join(" · ");
 
-  const request = <PromptBody prompt={prompt} fields={fields} setFields={setFields} />;
+  const note = <>
+    <label htmlFor={noteId} className="flex items-center gap-2 text-xs font-medium"><StickyNote aria-hidden="true" className="size-3.5" />Note</label>
+    <PromptTooltip content={["Note", denyKey, prompt.kind !== "denylist" && allowKey].filter(Boolean).join(" · ")}>
+      <Textarea
+        id={noteId}
+        rows={2}
+        className={classes("min-h-12", (prompt.kind === "plan" || question) && "max-h-24 resize-none overflow-y-auto")}
+        aria-label="Note"
+        placeholder="A note for the agent, sent with the answer: why, or what to do after"
+        maxLength={10_000}
+        value={fields.note}
+        onChange={(event) => setFields({ ...fields, note: event.target.value })}
+      />
+    </PromptTooltip>
+  </>;
+
+  const request = <PromptBody prompt={prompt} fields={fields} setFields={setFields} full={phone} />;
+
+  const actions = <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+    {prompt.kind === "question" ? <>
+      <Answer dim={dim} keys={denyKey} hint={dim ? capability.message : undefined} onClick={deny}>Skip</Answer>
+      <Answer dim={dim} approves keys={allowKey} hint={dim ? capability.message : undefined} onClick={allow}>
+        {questionsOf(prompt).length > 1 ? "Send answers" : "Send answer"}
+      </Answer>
+    </> : rows.map((row) => <RowButton key={row.label} row={row} showDetail={!phone} dim={dim} reason={dim ? capability.message : undefined} keys={row.kind === "deny" ? denyKey : row.kind === "allow" || (row.kind === "approve" && row.mode === null) ? allowKey : undefined} onClick={() => choose(row)} />)}
+  </div>;
+
+  if (phone) return <KeyContext context="permission">
+    {!details && <CardKeys allow={allow} deny={deny} offer={capability} />}
+    <section ref={self} aria-label="Parked prompt" tabIndex={-1} className="phone-prompt-summary rounded-lg border border-line bg-panel text-ink">
+      <span className="min-w-0 truncate font-medium">{HEADINGS[prompt.kind]}{prompt.toolName && ` · ${prompt.toolName}`}{facts && ` · ${facts}`}</span>
+      <Button size="sm" onClick={() => setDetails(true)}>Details</Button>
+      {shownLine !== undefined && <p role="status" className="phone-prompt-line text-signal">{shownLine}</p>}
+      <PhonePromptDetails open={details} onOpenChange={setDetails} title={HEADINGS[prompt.kind]} restore={self} keys={<CardKeys allow={allow} deny={deny} offer={capability} escape={false} />} footer={<>
+        {shownLine !== undefined && <p role="status" className="text-xs text-signal">{shownLine}</p>}
+        {actions}
+      </>}>
+        <div {...{ onCompositionStart, onCompositionEnd, onKeyDownCapture }} className="flex min-h-0 flex-col gap-2">
+          {request}
+          {!question && <ul aria-label="Answer details" className="flex flex-col gap-2 text-sm text-ink-muted">
+            {rows.filter(row => row.detail.length > 0).map(row => <li key={row.label}>{row.label}: {row.detail}</li>)}
+          </ul>}
+          <div className="flex flex-col gap-2">{note}</div>
+        </div>
+      </PhonePromptDetails>
+    </section>
+  </KeyContext>;
 
   return (
     <KeyContext context="permission">
@@ -179,7 +248,7 @@ const ParkedCard = ({ environmentId, parked, place, capability, fields, setField
         aria-label="Parked prompt"
         tabIndex={-1}
         className={classes(
-          "mx-3 flex max-h-[60vh] shrink-0 flex-col gap-2 rounded-lg border px-3 py-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-beam/50",
+          "mx-3 flex min-h-0 max-h-[60dvh] shrink flex-col gap-2 rounded-lg border px-3 py-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-beam/50",
           pinnedDecision ? "overflow-hidden" : "overflow-y-auto",
           dim ? "border-line bg-panel text-ink-muted" : classes("text-ink", EDGES[prompt.kind]),
         )}
@@ -200,40 +269,15 @@ const ParkedCard = ({ environmentId, parked, place, capability, fields, setField
         </header>
         <div id={bodyId} hidden={collapsed} className={classes(pinnedDecision && !collapsed && "flex min-h-0 flex-col")}>
           <div className={classes("flex flex-col gap-2", pinnedDecision && "min-h-0")}>
-            {permission ? <div role="region" aria-label="Permission request" className="flex min-h-0 flex-col gap-2">{request}</div> : request}
-            <div role={permission ? "group" : undefined} aria-label={permission ? "Permission decision" : undefined} className="flex shrink-0 flex-col gap-2">
-              <label htmlFor={noteId} className="flex items-center gap-2 text-xs font-medium"><StickyNote aria-hidden="true" className="size-3.5" />Note</label>
-              <PromptTooltip content={["Note", denyKey, prompt.kind !== "denylist" && allowKey].filter(Boolean).join(" · ")}>
-                <Textarea
-                  id={noteId}
-                  rows={2}
-                  className={classes("min-h-12", prompt.kind === "plan" && "max-h-24 resize-none overflow-y-auto")}
-                  aria-label="Note"
-                  placeholder="A note for the agent, sent with the answer: why, or what to do after"
-                  maxLength={10_000}
-                  value={fields.note}
-                  onChange={(event) => setFields({ ...fields, note: event.target.value })}
-                />
-              </PromptTooltip>
+            {permission ? <div role="region" aria-label="Permission request" className="flex min-h-0 flex-col gap-2">{request}</div> : question ? <div role="region" aria-label="Questions" className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain"><div className="shrink-0">{request}</div><div className="flex shrink-0 flex-col gap-2">{note}</div></div> : request}
+            <div role={permission || question ? "group" : undefined} aria-label={permission ? "Permission decision" : question ? "Question decision" : undefined} data-prompt-decision className="flex shrink-0 flex-col gap-2">
+              {!question && note}
               {shownLine !== undefined && (
                 <p role="status" className={line === undefined ? "text-xs text-ink-muted" : "text-xs text-signal"}>
                   {shownLine}
                 </p>
               )}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                {prompt.kind === "question" ? (
-                  <>
-                    <Answer dim={dim} keys={denyKey} hint={dim ? capability.message : undefined} onClick={deny}>
-                      Skip
-                    </Answer>
-                    <Answer dim={dim} approves keys={allowKey} hint={dim ? capability.message : undefined} onClick={allow}>
-                      {questionsOf(prompt).length > 1 ? "Send answers" : "Send answer"}
-                    </Answer>
-                  </>
-                ) : (
-                  rows.map((row) => <RowButton key={row.label} row={row} dim={dim} reason={dim ? capability.message : undefined} keys={row.kind === "deny" ? denyKey : row.kind === "allow" || (row.kind === "approve" && row.mode === null) ? allowKey : undefined} onClick={() => choose(row)} />)
-                )}
-              </div>
+              {actions}
               <KeysHint kind={prompt.kind} />
             </div>
           </div>
@@ -245,14 +289,14 @@ const ParkedCard = ({ environmentId, parked, place, capability, fields, setField
 };
 
 /** What the prompt asks, by its kind. */
-const PromptBody = ({ prompt, fields, setFields }: { readonly prompt: PromptOpenedPayload; readonly fields: CardFields; setFields(fields: CardFields): void }) => {
+const PromptBody = ({ prompt, fields, setFields, full = false }: { readonly prompt: PromptOpenedPayload; readonly fields: CardFields; setFields(fields: CardFields): void; readonly full?: boolean }) => {
   if (prompt.kind === "question") return <QuestionForm prompt={prompt} picks={fields.picks} setPicks={(picks) => setFields({ ...fields, picks })} />;
   if (prompt.kind === "plan") return <PlanBody text={prompt.plan ?? prompt.summary} />;
   const input = inputText(prompt.input);
   return (
     <>
-      <p className="shrink-0">{oneLine(prompt.summary, 300)}</p>
-      {prompt.reason !== null && <p className="shrink-0 text-amber">{oneLine(prompt.reason, 300)}</p>}
+      <p className="shrink-0">{full ? prompt.summary : oneLine(prompt.summary, 300)}</p>
+      {prompt.reason !== null && <p className="shrink-0 text-amber">{full ? prompt.reason : oneLine(prompt.reason, 300)}</p>}
       {prompt.blockedPath !== null && <p className="text-xs text-ink-muted">Path: {prompt.blockedPath}</p>}
       {prompt.agentId !== null && <p className="text-xs text-ink-muted">Asked by the subagent {prompt.agentId}</p>}
       {prompt.denylist !== null && prompt.denylist.length > 0 && (
@@ -306,13 +350,13 @@ const inputText = (input: PromptOpenedPayload["input"]): string | undefined => {
 };
 
 /** An approval's or a plan's row as a button, with what it does beside it: a greyed mode's reason. */
-const RowButton = ({ row, dim, keys, reason, onClick }: { readonly row: ChoiceRow; readonly dim: boolean; readonly keys: string | undefined; readonly reason: string | undefined; readonly onClick: () => void }) => {
+const RowButton = ({ row, dim, keys, reason, onClick, showDetail = true }: { readonly showDetail?: boolean; readonly row: ChoiceRow; readonly dim: boolean; readonly keys: string | undefined; readonly reason: string | undefined; readonly onClick: () => void }) => {
   const id = useId();
-  const described = row.detail.length > 0 ? id : undefined;
+  const described = showDetail && row.detail.length > 0 ? id : undefined;
   return (
     <span data-prompt-choice className="inline-flex items-baseline gap-1.5">
-      <Answer dim={dim} approves={row.kind !== "deny"} greyed={row.kind === "approve" && row.above} describedBy={described} keys={keys} hint={reason ?? row.detail} onClick={onClick}>
-        {row.label}
+      <Answer label={row.label} dim={dim} approves={row.kind !== "deny"} greyed={row.kind === "approve" && row.above} describedBy={described} keys={keys} hint={reason ?? row.detail} onClick={onClick}>
+        {!showDetail && row.kind === "approve" ? `Approve · ${row.mode ?? "acceptEdits"}` : row.label}
       </Answer>
       {described !== undefined && (
         <span id={described} className="text-xs text-ink-faint">
@@ -327,10 +371,10 @@ const RowButton = ({ row, dim, keys, reason, onClick }: { readonly row: ChoiceRo
  * The card's two keys, the `permission` context's, with whether the card can answer now; and Esc from elsewhere in
  * the window, which denies the focused pane's prompt once no surface before it in Escape's order takes it (#418).
  */
-const CardKeys = ({ allow, deny, offer }: { readonly allow: () => void; readonly deny: () => void; readonly offer: CapabilityAnswer }) => {
+const CardKeys = ({ allow, deny, offer, escape = true }: { readonly allow: () => void; readonly deny: () => void; readonly offer: CapabilityAnswer; readonly escape?: boolean }) => {
   useKeyAction("permission.allow", allow, offer);
   useKeyAction("permission.deny", deny, offer);
-  useEscapeStep("prompt", deny);
+  useEscapeStep("prompt", deny, escape);
   return null;
 };
 

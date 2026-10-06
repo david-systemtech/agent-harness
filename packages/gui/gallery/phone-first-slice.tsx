@@ -30,15 +30,43 @@ export const phoneFirstScene = async (kind: "pairing" | "conversation" | "permis
     useEffect(() => () => { void runtime.close(); void presentation.close(); }, []);
     useEffect(() => {
       if (kind !== "permission") return;
-      const reveal = () => {
-        const decision = document.querySelector<HTMLElement>('[aria-label="Allow once"]');
-        if (decision) { decision.scrollIntoView({ block: "nearest" }); observer.disconnect(); }
-      };
-      const observer = new MutationObserver(reveal);
-      observer.observe(document.getElementById("root") ?? document.body, { childList: true, subtree: true });
-      reveal();
-      return () => observer.disconnect();
+      return revealPermissionDecision();
     }, []);
     return <div data-web-gallery style={{ width, height: `min(${height}px, 100dvh)`, margin: "auto" }}><App runtime={runtime} presentation={presentation} clock={clock} version="0.0.0" macOS={false} web={{ platform, route: kind === "pairing" ? {} : { session } }} /></div>;
   };
 };
+
+
+/** Phone requests open Details; desktop fixtures reveal only their own dock scroller. */
+export function revealPermissionDecision(): () => void {
+  let stopped = false, started = false, frame = 0;
+  const reveal = () => {
+    const details = document.querySelector<HTMLButtonElement>(".phone-prompt-summary button");
+    const decision = document.querySelector<HTMLElement>('[aria-label="Allow once"]');
+    if (!decision) { details?.click(); return; }
+    if (started) return;
+    started = true; observer.disconnect();
+    void (document.fonts?.ready ?? Promise.resolve()).then(() => {
+      let previous = "", stable = 0;
+      const settle = () => {
+        if (stopped) return;
+        const well = decision.closest<HTMLElement>("[data-composer-column]");
+        if (well) {
+          const action = decision.getBoundingClientRect(), bounds = well.getBoundingClientRect();
+          const bottom = bounds.bottom - Math.min(4, Math.max(0, bounds.height - action.height));
+          if (action.bottom > bottom) well.scrollTop += Math.ceil(action.bottom - bottom);
+        }
+        const rect = decision.getBoundingClientRect();
+        const current = JSON.stringify([rect.x, rect.y, rect.width, rect.height, well?.scrollTop]);
+        stable = current === previous ? stable + 1 : 0; previous = current;
+        if (stable >= 3) { decision.dataset["permissionRevealed"] = ""; return; }
+        frame = requestAnimationFrame(settle);
+      };
+      if (!stopped) frame = requestAnimationFrame(settle);
+    });
+  };
+  const observer = new MutationObserver(reveal);
+  observer.observe(document.getElementById("root") ?? document.body, { childList: true, subtree: true });
+  reveal();
+  return () => { stopped = true; observer.disconnect(); cancelAnimationFrame(frame); };
+}

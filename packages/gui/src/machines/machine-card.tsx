@@ -1,3 +1,6 @@
+import { ReadOnlyAccess } from "../connections/limited-access.js";
+import { ConnectionGrant } from "../connections/connection-grant.js";
+import { WebOrigins } from "./web-origins.js";
 import { KeyRound } from "lucide-react";
 import { clockTime, rowKeys, type EnvironmentView } from "@agent-harness/client-runtime";
 import { NETWORK_SETTINGS_KEYS, type MethodName, type SettingsKey } from "@agent-harness/contracts";
@@ -102,6 +105,7 @@ export const MachineCard = ({ view, namesake, unprotected, forgotten, offer }: M
         {view.phase === "ready" && <Badge variant="secondary">Ready</Badge>}
         {view.primary && <Badge variant="outline">Primary</Badge>}
       </header>
+      <ConnectionGrant view={view} />
       {offer}
       {namesake !== undefined && <p className="text-sm text-amber">Another of your machines is named {namesake.name} too: rename one to tell them apart.</p>}
       {view.phase !== "ready" && (
@@ -118,14 +122,13 @@ export const MachineCard = ({ view, namesake, unprotected, forgotten, offer }: M
         </p>
       )}
       {lacking.map((line) => (
-        <p key={line} className="text-sm text-amber">
-          Read-only: {line}
-        </p>
+        <ReadOnlyAccess key={line} environmentId={view.environmentId} line={line}><p className="text-sm text-amber">Read-only: {line}</p></ReadOnlyAccess>
       ))}
       <Part title="Identity"><LookEditor view={view} writable={LOOK_COMMANDS.every(admits)} /></Part>
       <Part title="Reachability">
         <Reachability view={view} writable={admits("settings.update")} />
       </Part>
+      <WebOrigins view={view} />
       <Part title="Containment">
         <ContainmentAvailability view={view} />
       </Part>

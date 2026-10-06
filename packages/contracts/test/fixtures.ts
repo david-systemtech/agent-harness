@@ -1,3 +1,4 @@
+import { pushMethodFixtures } from "./push-fixtures.js";
 import { attentionMethodFixtures, attentionSchemaFixtures } from "./attention-fixtures.js";
 import { bankValidatorUpdateMethodFixtures, bankValidatorUpdateSchemaFixtures } from "./bank-validator-update-fixtures.js";
 import { bankMigrationSchemaFixtures, bankMigrationMethodFixtures } from "./bank-migration-fixtures.js";
@@ -145,6 +146,7 @@ const accessPayloads = {
   "client-session.revoked": { clientSessionId: "cs-1", reason: "requested" },
   "socket.opened": { clientSessionId: "cs-1", socketId: "s-1", remoteAddress: "100.101.102.103" },
   "socket.closed": { clientSessionId: "cs-1", socketId: "s-1" },
+  "access.changed": { clientSessionId: "cs-1", from: { scopes: ["read"], ceiling: "plan" }, to: { scopes: ["read", "admin"], ceiling: "acceptEdits" } },
   "scope.granted": { clientSessionId: "cs-1", granted: ["admin"], scopes: ["read", "admin"] },
   "ceiling.changed": { clientSessionId: "cs-1", from: "plan", to: "auto" },
   "bypass.acknowledged": { setting: "permissions.unattended.mode", sentence: BYPASS_SENTENCE },
@@ -179,6 +181,7 @@ const invalidAccessPayloads: Record<keyof typeof accessPayloads, readonly unknow
   "client-session.revoked": [{ clientSessionId: "cs-1", reason: "because" }, { reason: "idle" }],
   "socket.opened": [{ clientSessionId: "cs-1", socketId: "s-1" }, { clientSessionId: "cs-1", socketId: "", remoteAddress: null }],
   "socket.closed": [{ clientSessionId: "cs-1" }, { socketId: "s-1" }],
+  "access.changed": [{ clientSessionId: "cs-1", from: { scopes: [], ceiling: "plan" }, to: { scopes: ["read"], ceiling: "plan" } }, { clientSessionId: "cs-1" }],
   "scope.granted": [{ clientSessionId: "cs-1", granted: [], scopes: ["read"] }, { clientSessionId: "cs-1", scopes: ["read"] }],
   "ceiling.changed": [{ clientSessionId: "cs-1", from: "", to: "auto" }, { clientSessionId: "cs-1", to: "auto" }, { clientSessionId: "cs-1", from: "default", to: "auto" }],
   "bypass.acknowledged": [{ setting: "permissions.unattended.mode" }, { setting: "", sentence: BYPASS_SENTENCE }],
@@ -420,7 +423,12 @@ const invalidStatuses = [
 
 /** Params and result instances for every registered method. */
 const methodFixtures: Record<string, { params: Fixtures; result: Fixtures }> = {
-  ...attentionMethodFixtures,
+  ...attentionMethodFixtures, ...pushMethodFixtures,
+  "web.origins.get": { params: { valid: [{}], invalid: [[]] }, result: { valid: [{ clientOrigins: [], connectOrigins: [] }], invalid: [{}] } },
+  "web.origins.set": {
+    params: { valid: [{ commandId: "0f8fad5b-d9cb-469f-a165-70867728950e", clientOrigins: ["https://client.example.test:8443"], connectOrigins: [] }], invalid: [{ commandId: "0f8fad5b-d9cb-469f-a165-70867728950e", clientOrigins: ["*"], connectOrigins: [] }, {}] },
+    result: { valid: [{ clientOrigins: [], connectOrigins: [] }], invalid: [{}] },
+  },
   "environment.status": {
     params: { valid: [{}], invalid: [[], "status"] },
     result: { valid: validStatuses, invalid: invalidStatuses },
@@ -638,6 +646,7 @@ const methodSchemaFixtures = Object.fromEntries(
 
 /** A valid and an invalid instance of every file the JSON Schema export writes. */
 export const schemaFixtures: Record<string, Fixtures> = {
+  "web/notices/origins.updated.json": { valid: [{}], invalid: [null, []] },
   ...attentionSchemaFixtures,
   "protocol-version.json": { valid: [1, 2], invalid: [0, 1.5, "1"] },
   "capability-flag.json": { valid: ["terminal"], invalid: ["", 1] },
@@ -818,6 +827,7 @@ export const schemaFixtures: Record<string, Fixtures> = {
       "denylist.updated",
       "review.updated",
       "settings.changed",
+      "web.origins.updated",
       "setup.result-changed",
       "skills.updated",
       "trust.updated",
@@ -870,6 +880,7 @@ export const schemaFixtures: Record<string, Fixtures> = {
       { type: "denylist.updated", payload: { sections: ["paths", "hosts"] } },
       { type: "review.updated", payload: {} },
       { type: "settings.changed", payload: { keys: ["appearance.theme", "permissions.containment.default"] } },
+      { type: "web.origins.updated", payload: {} },
       { type: "setup.result-changed", payload: forgeRejected },
       { type: "setup.result-changed", payload: pendingRead },
       { type: "skills.updated", payload: {} },

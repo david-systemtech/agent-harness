@@ -85,6 +85,7 @@ describe("the method registry", () => {
       "access.sessions.revoke": "admin",
       "access.sessions.refresh": "read",
       "access.sessions.setCeiling": "admin",
+      "access.sessions.setAccess": "admin",
       "access.log.list": "admin",
     });
   });
@@ -230,6 +231,7 @@ describe("the method registry", () => {
       expect(method.params.shape, method.name).toHaveProperty("commandId", CommandId);
     }
     expect(methods.filter((m) => m.kind === "command").map((m) => m.name)).toEqual([
+      "web.origins.set",
       "attention.targets.set",
       "attention.targets.remove",
       "attention.routes.set",
@@ -245,6 +247,7 @@ describe("the method registry", () => {
       "access.sessions.revoke",
       "access.sessions.refresh",
       "access.sessions.setCeiling",
+      "access.sessions.setAccess",
       ...methods.filter((m) => m.kind === "command" && /^(sessions|groups)\./.test(m.name)).map((m) => m.name),
       "runs.start",
       "runs.send",
@@ -419,6 +422,10 @@ describe("the method registry", () => {
 
   it("types params and results from the table", () => {
     expectTypeOf<MethodName>().toEqualTypeOf<
+      | "attention.push.key"
+      | "attention.push.test"
+      | "web.origins.get"
+      | "web.origins.set"
       | "attention.targets.list"
       | "attention.targets.set"
       | "attention.targets.remove"
@@ -439,6 +446,7 @@ describe("the method registry", () => {
       | "access.sessions.revoke"
       | "access.sessions.refresh"
       | "access.sessions.setCeiling"
+      | "access.sessions.setAccess"
       | "access.log.list"
       | "sessions.create"
       | "sessions.setWorkspace"
