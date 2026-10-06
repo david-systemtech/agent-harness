@@ -695,7 +695,8 @@ stale state in tooltip. Hand off 22px/Hand 12; completed state amber strip with
 24px Keep working here. Missing workspace offers Choose a workspace.
 
 Bottom inside card: Paperclip 28 left; flexible space; effective Enter send /
-Shift+Enter newline hint (hide below 640px); SendHorizontal 28 beam/beam-ink right.
+Shift+Enter newline hint (hidden on the phone layout, portrait and short
+landscape); SendHorizontal 28 beam/beam-ink right.
 Live and empty swaps to signal CircleStop; interrupt pending labelled spinner,
 no duplicate stop. Locked composer exposes capability reason; empty Send is
 50% opaque and does not accept activation. Never narrow the editor to make
@@ -826,6 +827,10 @@ max-height 100dvh−4rem, padding 0, header/body x 16/y 12, scrolling body, sect
 Run, Account, Usage, Capabilities, Tools; groups lg/hairline/inset 60/x 8/y 6,
 mono values. Hand-off rows lg/hairline/x 12/y 8, candidate identity/auth/model/
 capacity and blocked reason, fallback continuity action; busy protects dismissal.
+The provider sign-in dialog is max 512 and max-height 100dvh−4rem: its title and
+close X above and Send the code and Cancel the sign-in in the footer stay in the
+window while the middle (QR, page link, code, terminal command) scrolls; the page
+link folds to two mono lines beside Copy and Open the sign-in page.
 Delete session warns if running, finishes running check before enabling delete.
 Workspace picker names that a new session may be needed. Pairing forms put
 labels above fields and actions below, never in a narrow side column.
@@ -1107,7 +1112,11 @@ Eight-key legend in two responsive columns,2xs/faint descriptions, mono keycaps
 min 32: Enter send, Shift+Enter newline, palette shortcut, Escape dismiss/deny
 in its actual scope, New session, sidebar, Settings and Run info. Display keys
 from the effective registry. Escape must not promise stop while that binding
-is off. Narrow container changes to one column.
+is off. Narrow container changes to one column. The phone layout (the media
+test the phone frame uses) has no keyboard to press them with, so no welcome
+draws the legend there; the empty pane says "No session is open. Choose one or
+start a new one." and adds an outline Choose a session button that opens the
+session drawer and takes focus back when the drawer is dismissed.
 
 Sidebar and palette initial loading show three skeleton pairs in row geometry,
 not a blank box; transcript catching-up shows labelled status, preserving known

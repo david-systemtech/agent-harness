@@ -241,7 +241,7 @@ import { setupMethods } from "../setup/methods.js";
 import { mintMethods } from "../setup/mint.js";
 import { startSetupScheduler } from "../setup/scheduler.js";
 import { createSetupService, type SetupSteps } from "../setup/service.js";
-import { environmentStateChecks } from "../setup/state-checks.js";
+import { environmentDoneLines, environmentStateChecks, type StateChecksOptions } from "../setup/state-checks.js";
 import { readSettings, settingsProjector } from "../settings/settings-store.js";
 import type { SubscriptionHooks } from "../wire/subscriptions.js";
 import { createWire } from "../wire/wire.js";
@@ -259,6 +259,7 @@ import { createMethodTable, type MethodTable } from "./methods.js";
 import type { MemoryRunRegistry } from "./run-registry.js";
 import { processUserCheck, refusePrivilegedUser, type UserCheck } from "./user.js";
 import { createTrash } from "./trash.js";
+import { clearCredentialAccess, credentialAccessReporter, watchCredentialAccess } from "./credential-access.js";
 import { chooseVault, loadKeychainBinding } from "./keychain.js";
 import { holdVault, type Vault } from "./vault.js";
 
@@ -961,9 +962,16 @@ export const startEnvironment = async (options: EnvironmentOptions = {}): Promis
     const { record: loaded, created } = loadOrCreateRecord(dataDir, name, now);
     // The channel a new environment starts on (#846), at the start that creates it alone: a later start keeps the one set since.
     if (created && options.channel !== undefined) writeStartingChannel(log, loaded.id, options.channel);
+    // A keychain read that waits on the person, as macOS asks them once an update brings a Node the stored key's access
+    // list does not name, is said to the launcher, which pauses its trial's deadline, and to the window (#1689). Only
+    // macOS asks: a slow Windows Credential Manager call is no prompt, and is not watched.
+    clearCredentialAccess(dataDir);
+    const reportCredentialAccess = credentialAccessReporter({ dataDir, version: harnessVersion, launcher, now });
+    const loadBinding =
+      process.platform === "darwin" ? async () => watchCredentialAccess(await loadKeychainBinding(), reportCredentialAccess) : loadKeychainBinding;
     const { vault: chosen, reason } =
       options.vault === undefined
-        ? await chooseVault({ platform: process.platform, asService: launcher.present(), dataDir, environmentId: loaded.id, loadBinding: loadKeychainBinding })
+        ? await chooseVault({ platform: process.platform, asService: launcher.present(), dataDir, environmentId: loaded.id, loadBinding })
         : { vault: options.vault, reason: undefined };
     const vault = await holdVault(chosen, scrub);
     // Logged once every entry is registered, so the scrub on standard error takes a value a keychain's error carried.
@@ -1715,35 +1723,38 @@ export const startEnvironment = async (options: EnvironmentOptions = {}): Promis
     const accountId = accounts.defaultId();
     return accountId === null ? null : orientationSeam(host.orientationScope(accountId, { kind: "scratch", path: roots.scratch }, orientationInjection({ sessionId: null, accountId, origin: "client", holder: "provider-process", override: null })));
   };
+  const stateCheckOptions: StateChecksOptions = {
+    log,
+    orientation: readOrientation,
+    skills: { sources: () => readSkillSources(log).map((source) => skillSources.view(source)), ownPath: ownSkillsPath, clock },
+    adapters: host.adapters,
+    detectStateImport: () => detectSource(stateImportSource),
+    stateImport: {
+      environmentId: record.id,
+      underWay: () => stateImports.underWay()?.importId ?? null,
+    },
+    containment,
+    isRoot,
+    dataDir,
+    releaseChannel: () => channelChecks.releaseChannelHolds(),
+    updates: () => updates.machineHolds(channelChecks.status().newest),
+    hostUpdater: () => hostUpdater.holds(),
+    forge,
+    keyManagerConnections,
+    managedTools,
+    clock,
+    look: () => look.read(),
+    accounts: () => accounts.list(),
+    status: () => lifecycle.status(),
+    lanAddresses: () => interfaces.lanAddresses(),
+    banks,
+    browser,
+    version: harnessVersion,
+  };
   const setupSteps: SetupSteps = options.setupSteps ?? {
     steps: STEP_REGISTRY,
-    stateChecks: environmentStateChecks({
-      log,
-      orientation: readOrientation,
-      skills: { sources: () => readSkillSources(log).map((source) => skillSources.view(source)), ownPath: ownSkillsPath, clock },
-      adapters: host.adapters,
-      detectStateImport: () => detectSource(stateImportSource),
-      stateImport: {
-        environmentId: record.id,
-        underWay: () => stateImports.underWay()?.importId ?? null,
-      },
-      containment,
-      isRoot,
-      dataDir,
-      releaseChannel: () => channelChecks.releaseChannelHolds(),
-      updates: () => updates.machineHolds(channelChecks.status().newest),
-      hostUpdater: () => hostUpdater.holds(),
-      forge,
-      keyManagerConnections,
-      managedTools,
-      clock,
-      look: () => look.read(),
-      accounts: () => accounts.list(),
-      status: () => lifecycle.status(),
-      lanAddresses: () => interfaces.lanAddresses(),
-      banks,
-      browser,
-    }),
+    stateChecks: environmentStateChecks(stateCheckOptions),
+    doneLines: environmentDoneLines(stateCheckOptions),
     // The LLM steps' own sides (#584): the Memory bank step's describe session works in a worktree of a bank (#586).
     llmSteps: { "memory-bank": describeBankStep({ banks, clock, dataDir }) },
   };

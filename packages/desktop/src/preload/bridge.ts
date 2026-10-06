@@ -1,4 +1,5 @@
 import type {
+  CredentialAccessReader,
   GrantReader,
   HttpFetch,
   Shell,
@@ -42,6 +43,7 @@ export interface DesktopShell extends Shell {
   readonly notifications: Required<ShellNotifications>;
   readonly secrets: Required<ShellSecrets>;
   readonly localGrant: GrantReader;
+  readonly credentialAccess: CredentialAccessReader;
   readonly service: ShellService;
   readonly preview: ShellPreview;
   readonly update: ShellUpdate;
@@ -59,12 +61,24 @@ export interface PreloadIpc {
 }
 
 /**
+ * What a member's failure says, without the envelope Electron's `ipcRenderer.invoke` wraps it in: `Error invoking remote
+ * method '<channel>': ` and the failed error's class, as `Error: `. Every shell call fails through this, so the window says the
+ * main process's own words.
+ */
+const unwrapped = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, "");
+};
+
+/**
  * The shell over `ipc`: each member one channel of its own, a renderer's
  * listener handed strings alone. The preload exposes what this answers to
  * the page, through the context bridge.
  */
 export const shellBridge = (ipc: PreloadIpc): DesktopShell => {
-  const ask = <T>(member: Answered, ...args: unknown[]): Promise<T> => ipc.invoke(channelOf(member), ...args) as Promise<T>;
+  const ask = <T>(member: Answered, ...args: unknown[]): Promise<T> => (ipc.invoke(channelOf(member), ...args) as Promise<T>).catch((error: unknown) => {
+    throw new Error(unwrapped(error));
+  });
   const tell = (member: Told, ...args: unknown[]): void => ipc.send(channelOf(member), ...args);
 
   const accessListeners = new Set<(state: SecretAccess) => void>();
@@ -184,6 +198,7 @@ export const shellBridge = (ipc: PreloadIpc): DesktopShell => {
       protection: () => ask("secrets.protection"),
     },
     localGrant: { read: () => ask("localGrant.read") },
+    credentialAccess: { read: () => ask("credentialAccess.read") },
     service: { pendingUpdate: () => ask("service.pendingUpdate"), applyUpdateNow: () => ask("service.applyUpdateNow"), install: () => ask("service.install"), start: () => ask("service.start"), status: () => ask("service.status") },
     preview: { grant: (content) => ask("preview.grant", content) },
     update: { current: () => ask("update.current"), apply: (staged, when) => ask("update.apply", staged, when) },

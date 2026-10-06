@@ -164,7 +164,10 @@ jobs:
           compose_file="$project/compose.yaml"
           cp scripts/compose.yaml "$compose_file"
           cp scripts/host-updater.sh "$project/host-updater.sh"
-          printf 'AGENT_HARNESS_IMAGE=%s\n' "$IMAGE_REFERENCE" > "$project/.env"
+          # A setting kept in .env, as the phone address is, reaches the container
+          # through the release's compose file (#1691).
+          web_origin=https://release-check.example.ts.net:8443
+          printf 'AGENT_HARNESS_IMAGE=%s\nAGENT_HARNESS_WEB_ORIGIN=%s\n' "$IMAGE_REFERENCE" "$web_origin" > "$project/.env"
           cleanup() {
             result=$?
             trap - EXIT
@@ -185,6 +188,11 @@ jobs:
           if [ "$ready" != true ]; then
             docker compose -f "$compose_file" logs environment
             echo "::error::container did not become ready for the updater inspection"
+            exit 1
+          fi
+          passed=$(docker compose -f "$compose_file" exec -T environment printenv AGENT_HARNESS_WEB_ORIGIN) || passed=""
+          if [ "$passed" != "$web_origin" ]; then
+            echo "::error::the container does not have the .env file's AGENT_HARNESS_WEB_ORIGIN ($web_origin); it has '$passed'"
             exit 1
           fi
           before=$(find "$project" -type f -exec sha256sum {} + | sort)
@@ -406,6 +414,7 @@ jobs:
           mkdir unpacked
           bsdtar -xf desktop/agent-harness-desktop-linux-x64.pacman -C unpacked
           grep -qx "pkgname = agent-harness-desktop" unpacked/.PKGINFO
+          grep -qx "depend = polkit" unpacked/.PKGINFO
           grep -q "^Exec=/opt/agent-harness/agent-harness-desktop %U$" unpacked/usr/share/applications/agent-harness-desktop.desktop
           grep -q "^MimeType=.*x-scheme-handler/agent-harness;" unpacked/usr/share/applications/agent-harness-desktop.desktop
           test -x unpacked/opt/agent-harness/agent-harness-desktop
@@ -618,6 +627,32 @@ jobs:
                 } finally { Remove-Item -LiteralPath $passwordFile -Force }
                 Start-ScheduledTask -TaskName agent-harness
                 Wait-Ready 'scheduled-task start before uninstall (#1478)'
+                # Task Scheduler's End ends conhost alone: the launcher watches it and stops with it, and the
+                # next start runs exactly one launcher-entry chain, not a second one beside the first (#1712).
+                Stop-ScheduledTask -TaskName agent-harness
+                $stopTimer = [Diagnostics.Stopwatch]::StartNew()
+                do {
+                  Start-Sleep -Milliseconds 500
+                  $left = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like "$dataDir\versions\*\node\node.exe" -or ($_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*launcher-entry.cmd*') })
+                  $probe = [Net.Sockets.TcpClient]::new()
+                  try {
+                    try { $probe.Connect('127.0.0.1', $port) } catch [Net.Sockets.SocketException] { }
+                    $answering = $probe.Connected
+                  } finally { $probe.Dispose() }
+                } while (($left.Count -gt 0 -or $answering) -and $stopTimer.Elapsed.TotalSeconds -lt 60)
+                if ($answering) { throw 'Stop-ScheduledTask left the environment port open (#1712)' }
+                if ($left.Count -gt 0) { throw "Stop-ScheduledTask left $($left.Count) launcher-entry, launcher or environment processes running (#1712)" }
+                if (!(Select-String -LiteralPath $serviceLog -SimpleMatch 'which started the launcher entry, has ended, so the launcher stops' -Quiet)) {
+                  throw 'The service log does not say the launcher stopped with its task (#1712)'
+                }
+                Write-Output "Stop-ScheduledTask stopped the launcher and the environment within $($stopTimer.Elapsed.TotalSeconds) seconds"
+                Start-ScheduledTask -TaskName agent-harness
+                Wait-Ready 'scheduled-task start after Stop-ScheduledTask (#1712)'
+                $entries = @(Get-CimInstance Win32_Process -Filter "Name='cmd.exe'" | Where-Object { $_.CommandLine -like '*launcher-entry.cmd*' })
+                $launchers = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like "$dataDir\versions\*\node\node.exe" -and $_.CommandLine -like '* launch *' })
+                if ($entries.Count -ne 1 -or $launchers.Count -ne 1 -or $launchers[0].ParentProcessId -ne $entries[0].ProcessId) {
+                  throw "After Stop-ScheduledTask and Start-ScheduledTask: $($entries.Count) launcher-entry chains and $($launchers.Count) launchers, not one of each (#1712)"
+                }
                 # Keep native handles so PID reuse cannot make the exit checks lie.
                 $rows = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like "$dataDir\versions\*\node\node.exe" })
                 if ($rows.Count -lt 2) { throw 'The scheduled task did not start its launcher and server' }

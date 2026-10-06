@@ -1,6 +1,6 @@
-import type { BootstrapGrant } from "@agent-harness/contracts";
+import type { BootstrapGrant, CredentialAccessRecord } from "@agent-harness/contracts";
 import type { Observable } from "./observable.js";
-import type { Shell } from "./shell.js";
+import type { SecretProtection, Shell } from "./shell.js";
 
 /**
  * What the runtime cannot own and every client supplies
@@ -72,6 +72,12 @@ export interface SecretStore {
   get(name: string): Promise<string | undefined>;
   set(name: string, secret: string): Promise<void>;
   delete(name: string): Promise<void>;
+  /**
+   * How a token kept now is protected, which the Your machines card says when it is unprotected (#416). A pairing asks it
+   * before it spends its one-use code (#1693): on macOS the answer waits on the Keychain prompt, which a person answers late
+   * or not at all. Absent where a store always keeps a token.
+   */
+  readonly protection?: () => Promise<SecretProtection>;
 }
 
 /** What the runtime is told about one WebSocket. */
@@ -122,6 +128,19 @@ export interface NetworkState {
 
 /** The network as the platform sees it: online or offline, and whether the client is in the foreground. */
 export type NetworkSignal = Observable<NetworkState>;
+
+/**
+ * Reads the credential-access record the local environment writes while its
+ * start waits on the person to let it read its stored key (#1689): the
+ * record and whether its process is still alive, undefined when there is
+ * none. The desktop's shell provides one as its `credentialAccess` member.
+ */
+export interface CredentialAccessReader {
+  read(): Promise<LocalCredentialAccess | undefined>;
+}
+
+/** The local environment's credential-access record, and whether the start that wrote it still runs: a dead one's wait ended unanswered. */
+export type LocalCredentialAccess = CredentialAccessRecord & { readonly live: boolean };
 
 /** Reads the grant file the local environment writes. The desktop's shell provides one as its `localGrant` member. */
 export interface GrantReader {

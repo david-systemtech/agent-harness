@@ -1,5 +1,7 @@
 import {
+  isCredentialAccessUnanswered,
   LOCAL_PLACEHOLDER_ID,
+  PairingCodeSpentError,
   parsePairingInput,
   type EnvironmentView,
   type PairingInput,
@@ -8,13 +10,15 @@ import {
 } from "@agent-harness/client-runtime";
 import { createContext, use, useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Dialog, DialogClose, DialogContent, Input } from "../ui/index.js";
-import { useObservable, useRuntime, useShell } from "../window-context.js";
+import { useClock, useObservable, useRuntime, useShell } from "../window-context.js";
+import { KEYCHAIN_NOTICE_DELAY_MS } from "../notices/credential-notice.js";
 import { DialogFooter } from "../ui/dialog.js";
 import { DialogAction as Button } from "../ui/dialog-action.js";
-import { KeyRound, Link, QrCode, X } from "lucide-react";
+import { Globe, KeyRound, Link, QrCode, X } from "lucide-react";
 import "./phone-pairing.css";
 import { webCameraFor } from "../platform/web-camera.js";
 import { nameOf } from "./words.js";
+import { unlistedBy } from "./browser-reach.js";
 
 /**
  * Pairing this window with an environment (docs/specs/gui.md, "The local
@@ -24,16 +28,33 @@ import { nameOf } from "./words.js";
  * runtime's words; a link for an environment paired already offers to pair
  * it again in place, and a revoked or expired connection is paired again in
  * place from its heading. The form is the window's first view with "Run an
- * environment on this machine" off, and a dialog anywhere else.
+ * environment on this machine" off, and a dialog anywhere else. While macOS
+ * asks the person to let the app use its key, the form says where to answer;
+ * a prompt left unanswered is said again in the past tense, with Try again,
+ * which pairs with the same code: the runtime asks before it spends it (#1693).
+ * In a browser tab, a link whose origin the page may not contact is refused
+ * before any fetch, with how to allow it (#1713); whatever the form says is
+ * scrolled into view, below the fold on a phone as it may be.
  */
+
+/** What the form says while the token's OS store waits on macOS's Keychain prompt, and once that prompt went unanswered, before or after the code was spent. */
+const KEYCHAIN_ASKING = "macOS is asking to let agent-harness use its saved key. Look for the system dialog and choose Always Allow (it may ask for your Mac password).";
+const KEYCHAIN_UNANSWERED = "Not paired: macOS asked to let agent-harness use its saved key and had no answer. Look for the system dialog and choose Always Allow (it may ask for your Mac password), then Try again.";
+const KEYCHAIN_UNANSWERED_SPENT = "Not paired: macOS asked to let agent-harness use its saved key and had no answer. Look for the system dialog and choose Always Allow (it may ask for your Mac password), then pair with a new code: this one was used.";
 
 /** What the form says after a pairing: under way, done, failed, or the offer to pair again in place. */
 type Said =
   | { readonly kind: "pairing" }
   | { readonly kind: "line"; readonly line: string }
-  | { readonly kind: "offer"; readonly line: string; readonly input: PairingInput; readonly environmentId: string };
+  | { readonly kind: "offer"; readonly line: string; readonly input: PairingInput; readonly environmentId: string }
+  | { readonly kind: "unanswered"; readonly input: PairingInput; readonly options: PairingOptions | undefined }
+  | { readonly kind: "unlisted"; readonly line: string; readonly environmentId: string };
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/** What the form says of an origin the serving environment's Allowed connection origins leave out: both lists to change, and the reload. */
+const unlistedLine = (origin: string, serving: string, pageOrigin: string): string =>
+  `Not paired: This browser client may not contact ${origin}. To allow it, add ${origin} to ${serving}'s Allowed connection origins under Your machines, Browser origins, then reload this page; and ask that environment's admin to add this client's origin, ${pageOrigin}, to its Allowed client origins.`;
 
 /** A pairing's outcome as the form says it, the environment named as the window names it. */
 const saidOf = (outcome: PairingOutcome, input: PairingInput, views: readonly EnvironmentView[]): Said => {
@@ -50,6 +71,12 @@ const saidOf = (outcome: PairingOutcome, input: PairingInput, views: readonly En
   }
 };
 
+/** A pairing that threw: Try again only while the code is unspent, the runtime having asked the store before the exchange. */
+const saidOfFailure = (error: unknown, input: PairingInput, options: PairingOptions | undefined): Said => {
+  if (!isCredentialAccessUnanswered(error)) return { kind: "line", line: `Not paired: ${messageOf(error)}` };
+  return error instanceof PairingCodeSpentError ? { kind: "line", line: KEYCHAIN_UNANSWERED_SPENT } : { kind: "unanswered", input, options };
+};
+
 export interface PairingFormProps {
   /** Pairs again in place: the connection whose client session a pairing replaces. */
   readonly rePair?: string | undefined;
@@ -63,12 +90,15 @@ export interface PairingFormProps {
   readonly autoFocus?: boolean;
   /** Require a verified full grant before accepting this replacement. */
   readonly fullAccess?: boolean;
+  /** Goes to an environment's Browser origins lists, offered beside an origin they leave out; none where the form cannot reach Settings. */
+  readonly toBrowserOrigins?: ((environmentId: string) => void) | undefined;
 }
 
 /** A pairing link, or an address and code (or a QR scanned, where the window has a camera), and the one line that says how the pairing went. */
-export const PairingForm = ({ rePair, link: handed, onPaired, scanQr, autoFocus = false, fullAccess = false }: PairingFormProps) => {
+export const PairingForm = ({ rePair, link: handed, onPaired, scanQr, autoFocus = false, fullAccess = false, toBrowserOrigins }: PairingFormProps) => {
   const runtime = useRuntime();
   const shell = useShell();
+  const clock = useClock();
   const camera = webCameraFor(runtime);
   const scanner = scanQr ?? (camera ? () => camera.scanQr() : undefined);
   useEffect(() => () => camera?.cancel(), [camera]);
@@ -77,24 +107,53 @@ export const PairingForm = ({ rePair, link: handed, onPaired, scanQr, autoFocus 
   const [code, setCode] = useState("");
   const [said, setSaid] = useState<Said | undefined>(undefined);
   const pairing = said?.kind === "pairing";
+  const status = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (said !== undefined && said.kind !== "pairing" && typeof status.current?.scrollIntoView === "function") status.current.scrollIntoView({ block: "nearest" });
+  }, [said]);
+  // Whether the pairing under way waits on the OS's credential prompt, said after the same delay as the window's notice.
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    if (!pairing) return undefined;
+    let timer: ReturnType<typeof clock.setTimeout> | undefined;
+    const stop = shell?.secrets?.onAccess?.((state) => {
+      timer?.cancel();
+      setAsking(false);
+      if (state === "waiting") timer = clock.setTimeout(() => setAsking(true), KEYCHAIN_NOTICE_DELAY_MS);
+    });
+    return () => {
+      timer?.cancel();
+      stop?.();
+      setAsking(false);
+    };
+  }, [pairing, shell, clock]);
   const linkField = useId();
   const addressField = useId();
   const codeField = useId();
 
   const pair = useCallback(
-    (input: PairingInput, options?: PairingOptions) => {
+    async (input: PairingInput, options?: PairingOptions) => {
       const parsed = parsePairingInput(input);
       if (shell === undefined && parsed.ok && !parsed.origin.startsWith("https://")) {
         setSaid({ kind: "line", line: "Use the environment’s HTTPS pairing link or HTTPS address. HTTP connections are unavailable in the browser." });
         return;
       }
       setSaid({ kind: "pairing" });
-      runtime.connections.add(input, { ...(options ?? (rePair === undefined ? {} : { rePair })), ...(fullAccess && { fullAccess: true }) }).then(
+      if (shell === undefined && parsed.ok) {
+        const pageOrigin = window.location.origin;
+        const unlisted = await unlistedBy(runtime, parsed.origin, pageOrigin);
+        if (unlisted !== undefined) {
+          const serving = runtime.projections.environments.read().find((view) => view.environmentId === unlisted);
+          setSaid({ kind: "unlisted", line: unlistedLine(parsed.origin, serving ? nameOf(serving) : "this environment", pageOrigin), environmentId: unlisted });
+          return;
+        }
+      }
+      await runtime.connections.add(input, { ...(options ?? (rePair === undefined ? {} : { rePair })), ...(fullAccess && { fullAccess: true }) }).then(
         (outcome) => {
           setSaid(saidOf(outcome, input, runtime.projections.environments.read()));
           if (outcome.status === "paired") onPaired?.(outcome.environmentId);
         },
-        (error: unknown) => setSaid({ kind: "line", line: `Not paired: ${messageOf(error)}` }),
+        (error: unknown) => setSaid(saidOfFailure(error, input, options)),
       );
     },
     [runtime, rePair, onPaired, shell, fullAccess],
@@ -105,16 +164,16 @@ export const PairingForm = ({ rePair, link: handed, onPaired, scanQr, autoFocus 
   useEffect(() => {
     if (handed === undefined || pairedHanded.current) return;
     pairedHanded.current = true;
-    pair({ link: handed });
+    void pair({ link: handed });
   }, [handed, pair]);
 
   const byLink = (event: FormEvent) => {
     event.preventDefault();
-    if (link.trim() !== "") pair({ link });
+    if (link.trim() !== "") void pair({ link });
   };
   const byCode = (event: FormEvent) => {
     event.preventDefault();
-    if (address.trim() !== "" || code.trim() !== "") pair({ address, code });
+    if (address.trim() !== "" || code.trim() !== "") void pair({ address, code });
   };
   const scan = async () => {
     let scanned: string | undefined;
@@ -125,7 +184,7 @@ export const PairingForm = ({ rePair, link: handed, onPaired, scanQr, autoFocus 
     }
     if (scanned === undefined) return;
     setLink(scanned);
-    pair({ link: scanned });
+    await pair({ link: scanned });
   };
 
   return (
@@ -148,16 +207,34 @@ export const PairingForm = ({ rePair, link: handed, onPaired, scanQr, autoFocus 
         <Input title="Pairing code (type; Enter to pair)" id={codeField} value={code} placeholder="K7Q2M-XH4RT" onChange={(event) => setCode(event.target.value)} disabled={pairing} className="font-mono" />
         <Button icon={Link} keys="Enter" type="submit" disabled={pairing} className="self-start mt-2">Pair with the code</Button>
       </form>
-      <div role="status" className="flex min-h-8 items-center gap-2 text-sm text-ink">
-        {said?.kind === "pairing" && <span>Pairing…</span>}
+      <div ref={status} role="status" className="flex min-h-8 items-center gap-2 text-sm text-ink">
+        {said?.kind === "pairing" && <span>{asking ? KEYCHAIN_ASKING : "Pairing…"}</span>}
         {said?.kind === "line" && <span>{said.line}</span>}
+        {said?.kind === "unanswered" && (
+          <>
+            <span>{KEYCHAIN_UNANSWERED}</span>
+            <Button variant="default" onClick={() => void pair(said.input, said.options)}>
+              Try again
+            </Button>
+          </>
+        )}
         {said?.kind === "offer" && (
           <>
             <span>{said.line}</span>
-            <Button variant="default" onClick={() => pair(said.input, { rePair: said.environmentId })}>
+            <Button variant="default" onClick={() => void pair(said.input, { rePair: said.environmentId })}>
               Pair again
             </Button>
             <Button onClick={() => setSaid(undefined)}>Cancel</Button>
+          </>
+        )}
+        {said?.kind === "unlisted" && (
+          <>
+            <span>{said.line}</span>
+            {toBrowserOrigins !== undefined && (
+              <Button icon={Globe} onClick={() => toBrowserOrigins(said.environmentId)}>
+                Browser origins
+              </Button>
+            )}
           </>
         )}
       </div>
