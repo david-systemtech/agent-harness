@@ -116,6 +116,96 @@ describe("the desktop's own update", () => {
     expect(shell.calls.map(([member]) => member)).not.toContain("http");
   });
 
+  it("is checked again when the local environment comes back from updating itself, not an hour later, never saying the build is the newest against the newer environment (#1793)", async () => {
+    const read = { at: "2026-10-07T10:13:00.000Z", result: "ok" } as const;
+    const { clock, desk, runtime, until, build } = await launch({ updates: { status: { version: RUNNING, newest: RUNNING, lastCheck: read } } });
+    await until(() => build().state === "current", "found the build current");
+    expect(desktopBuildWords(build())).toBe("This client's build is the newest.");
+
+    // The environment's own check finds 0.6.0 and it updates itself: it says bye, restarts as 0.6.0 and is ready again.
+    const said: (string | null)[] = [];
+    onTestFinished(runtime.desktopUpdate.view.subscribe((view) => said.push(desktopBuildWords(view.build))));
+    desk.bye("updating");
+    await until(() => runtime.connections.list.read()[0]?.phase === "updating", "heard the environment updating");
+    desk.setUpdates({ status: { version: "0.6.0", newest: "0.6.0", lastCheck: { at: "2026-10-07T11:17:24.000Z", result: "ok" } }, desktopBuild: STAGED });
+    desk.discovery({ harnessVersion: "0.6.0" });
+    clock.advance(10_000);
+    await until(() => runtime.connections.list.read()[0]?.phase === "ready", "reconnected");
+
+    await until(() => build().state === "ready", "staged the environment's new version");
+    expect(build()).toEqual({ state: "ready", version: RUNNING, staged: STAGED });
+    expect(params(desk, "updates.desktop.stage")).toEqual([{ platform: "linux-x64", format: "pacman" }]);
+    expect(said).not.toContain("This client's build is the newest.");
+  });
+
+  it("is checked again when the local environment says an update is pending, which its channel's newest found (#1793)", async () => {
+    const { desk, until, build } = await launch({ updates: { status: { version: RUNNING, newest: RUNNING, lastCheck: { at: "2026-10-07T10:13:00.000Z", result: "ok" } } } });
+    await until(() => build().state === "current", "found the build current");
+
+    desk.setUpdates({ status: { newest: "0.6.0", lastCheck: { at: "2026-10-07T11:13:14.000Z", result: "ok" } }, desktopBuild: STAGED });
+    desk.notice("environment.update-pending", {
+      updateId: "6f1c2d3e-4a5b-4c6d-8e7f-1a2b3c4d5e6f",
+      toVersion: "0.6.0",
+      source: "channel",
+      since: "2026-10-07T11:13:14.000Z",
+      deferUntil: "2026-10-07T13:13:14.000Z",
+    });
+
+    await until(() => build().state === "ready", "staged the newest the environment found");
+    expect(build()).toEqual({ state: "ready", version: RUNNING, staged: STAGED });
+  });
+
+  it("is checked again when the local environment's check of its channel finds a newer release it takes no update for, auto-update off, not an hour later (#1795)", async () => {
+    const { desk, until, build } = await launch({
+      settings: { "updates.autoUpdate": false },
+      updates: { status: { version: RUNNING, newest: RUNNING, lastCheck: { at: "2026-10-07T10:13:00.000Z", result: "ok" } } },
+    });
+    await until(() => build().state === "current", "found the build current");
+
+    // The environment's hourly check finds 0.6.0 and, auto-update off, takes no update for it: it says only that it checked.
+    const lastCheck = { at: "2026-10-07T11:13:14.000Z", result: "ok" } as const;
+    desk.setUpdates({ status: { newest: "0.6.0", lastCheck }, desktopBuild: STAGED });
+    desk.notice("environment.channel-checked", { newest: "0.6.0", lastCheck });
+
+    await until(() => build().state === "ready", "staged the newest the environment's check found");
+    expect(build()).toEqual({ state: "ready", version: RUNNING, staged: STAGED });
+    expect(params(desk, "updates.desktop.stage")).toEqual([{ platform: "linux-x64", format: "pacman" }]);
+  });
+
+  it("checks again once the check under way ends when the local environment says more while it stages, leaving one hourly check (#1793)", async () => {
+    const { clock, desk, until, build } = await launch({ updates: { status: { version: RUNNING, newest: RUNNING, lastCheck: { at: "2026-10-07T10:13:00.000Z", result: "ok" } } } });
+    await until(() => build().state === "current", "found the build current");
+    // Each stage is a download, answered when the test lets it end.
+    const stages: (() => void)[] = [];
+    desk.wire.answer("updates.desktop.stage", () => new Promise((resolve) => stages.push(() => resolve({ result: { ...STAGED } }))));
+    const updateId = "6f1c2d3e-4a5b-4c6d-8e7f-1a2b3c4d5e6f";
+    desk.setUpdates({ status: { newest: "0.6.0", lastCheck: { at: "2026-10-07T11:13:14.000Z", result: "ok" } } });
+    desk.notice("environment.update-pending", { updateId, toVersion: "0.6.0", source: "channel", since: "2026-10-07T11:13:14.000Z", deferUntil: "2026-10-07T13:13:14.000Z" });
+    await until(() => desk.requests("updates.desktop.stage").length === 1, "began staging");
+
+    // The stage is still under way when the environment says its update began.
+    desk.notice("environment.update-started", { updateId, fromVersion: RUNNING, toVersion: "0.6.0", cause: "idle" });
+    for (let i = 0; i < 5; i++) await flush();
+    expect(desk.requests("updates.desktop.stage")).toHaveLength(1);
+    stages[0]?.();
+    await until(() => desk.requests("updates.desktop.stage").length === 2, "checked again after the stage under way");
+    // The second stage takes ten minutes, so an hourly check left by the first would come before the second's.
+    clock.advance(10 * MINUTE);
+    stages[1]?.();
+    for (let i = 0; i < 10; i++) await flush();
+    expect(build()).toEqual({ state: "ready", version: RUNNING, staged: STAGED });
+
+    // One hourly check is left, an hour after the last check ended: none before it, and none after it but the next hour's.
+    clock.advance(HOUR - MINUTE);
+    for (let i = 0; i < 5; i++) await flush();
+    expect(desk.requests("updates.desktop.stage")).toHaveLength(2);
+    clock.advance(MINUTE);
+    await until(() => desk.requests("updates.desktop.stage").length === 3, "checked at the hour");
+    stages[2]?.();
+    for (let i = 0; i < 5; i++) await flush();
+    expect(desk.requests("updates.desktop.stage")).toHaveLength(3);
+  });
+
   it("waits for the local environment's first read of its channel, never reporting the build newest, and stages the newer build as soon as that read lands (#1753)", async () => {
     const { clock, desk, until, build } = await launch();
     await until(() => build().state === "waiting", "waited for the environment's first check");
@@ -362,6 +452,58 @@ describe("the desktop's own update", () => {
     await denied.until(() => denied.build().state === "ready", "reported the build ready");
     await denied.runtime.desktopUpdate.restart();
     expect(denied.build()).toMatchObject({ failure: "install", staged: STAGED });
+  });
+
+  it.each(["draining", "updating"] as const)(
+    "never fails a stage the local environment's %s cut short, and stages again as soon as the environment is ready, which finds the build staged (#1788)",
+    async (reason) => {
+      const { clock, desk, runtime, until, build, shellCalls } = await launch({
+        updates: { status: { newest: "0.6.0" }, desktopBuild: STAGED },
+        desk: (desk) => desk.wire.holdNext("updates.desktop.stage"),
+      });
+      await until(() => build().state === "staging" && desk.requests("updates.desktop.stage").length === 1, "started the stage");
+
+      // The environment goes away before it answers the stage: its socket closes with a bye, and the stage with it.
+      desk.bye(reason);
+      await until(() => runtime.connections.list.read()[0]?.phase === reason, "heard the environment go");
+      for (let i = 0; i < 5; i++) await flush();
+      expect(build().state).not.toBe("failed");
+
+      // Ready again well inside a minute, not the hour after: the next stage answers the build the cut one staged.
+      clock.advance(10_000);
+      await until(() => runtime.connections.list.read()[0]?.phase === "ready", "reconnected");
+      await until(() => build().state === "ready", "reported the build ready");
+      expect(build()).toEqual({ state: "ready", version: RUNNING, staged: STAGED });
+      expect(params(desk, "updates.desktop.stage")).toEqual([{ platform: "linux-x64", format: "pacman" }]);
+      expect(shellCalls("update.apply")).toEqual([[STAGED, "quit"]]);
+    },
+  );
+
+  it("never fails a check whose read of the local environment's updates its restart cut short, and shows what it had until it looks again (#1788)", async () => {
+    const { clock, desk, runtime, until, build } = await launch({ updates: { status: { newest: RUNNING } } });
+    await until(() => build().state === "current", "found the build current");
+
+    desk.wire.holdNext("updates.status");
+    desk.setUpdates({ status: { newest: "0.6.0" }, desktopBuild: STAGED });
+    clock.advance(HOUR);
+    await until(() => desk.requests("updates.status").length === 2, "checked again");
+    desk.bye("draining");
+    await until(() => runtime.connections.list.read()[0]?.phase === "draining", "heard the environment drain");
+    for (let i = 0; i < 5; i++) await flush();
+    expect(build()).toEqual({ state: "current", version: RUNNING });
+
+    clock.advance(10_000);
+    await until(() => build().state === "ready", "staged the build once the environment was ready again");
+    expect(build()).toEqual({ state: "ready", version: RUNNING, staged: STAGED });
+  });
+
+  it("checks again at once on a person's Check again after a failed stage, not an hour later", async () => {
+    const { desk, runtime, until, build } = await launch({ updates: { status: { newest: "0.6.0" }, desktopBuild: { refused: "conflict", message: "The artefact did not download.", data: { reason: "download" } } } });
+    await until(() => build().state === "failed", "failed the stage");
+
+    desk.setUpdates({ desktopBuild: STAGED });
+    expect(await runtime.desktopUpdate.checkAgain()).toEqual({ state: "ready", version: RUNNING, staged: STAGED });
+    expect(desk.requests("updates.desktop.stage")).toHaveLength(2);
   });
 
   it("is never checked on a shell with no update", async () => {
