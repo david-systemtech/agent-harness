@@ -463,6 +463,8 @@ Noninteractive space drags the window; every action is outside the drag region.
 On macOS retain native traffic lights and reserve fixed 76px left in native,
 non-fullscreen windows. Other native platforms draw three 28px window controls;
 browser clients draw none. Unfocused controls 60% opaque; close hover signal.
+A full-window surface with its own header (the first-run welcome, the Set up
+checklist) carries the same frame: drag, the macOS inset, controls at the end.
 
 Left-to-right order: collapsed-sidebar opener; focused environment chip;
 workspace basename;12px ChevronRight; truncating session title; centred search;
@@ -632,8 +634,8 @@ the outer page or dock.
 | Kind | Anatomy and states |
 | --- | --- |
 | User | Right-aligned bubble max 80% of row body, lg, wash-user, ink/sm, x 12/y 8, prewrapped; “you” beam-text spine. Pending 70% opaque; sent attachments are named size chips, never fetched pictures. Hover/focus GitFork and Undo 2 actions; queued Hourglass label plus Read now/Withdraw remain visible and use runtime availability. |
-| Reply | No fill, border or padding; full-width ink; streaming plain text/caret, settled Markdown. Over 80000 characters use prewrapped text. Subagent attribution only when supplied. Nonstandard stop note amber. |
-| Reasoning | Sage “thinking” spine and 12px Brain, collapsed preview/chevron, live pulse. Default follows reasoningShown, with retained per-block choice; settled muted Markdown; streaming/long text prewrapped. Redacted body square, quiet notice. |
+| Reply | No fill, border or padding; full-width ink; Markdown while streaming (caret at the end of the last block) and settled, one parse, so the end of a turn reflows nothing. Over 80000 characters use prewrapped text. Subagent attribution only when supplied. Nonstandard stop note amber. |
+| Reasoning | Sage “thinking” spine and 12px Brain, collapsed preview/chevron, live pulse. Default follows reasoningShown, with retained per-block choice; muted Markdown, streaming or settled; long text prewrapped. Redacted body square, quiet notice. |
 | Tool | Collapsed lg/hairline/wash card; open or artifact hairline-strong; failure signal/35 edge. Header x 10/y 8/gap 8, category icon, mono name, truncated summary, edit counts, duration, status badge. Running cyan pulse, success mint, error signal, denied amber, cancelled neutral. Expand in place. |
 | Tool detail | Diff for edits; argument/input/raw folds retained by call identity, default input open except edits. Square formatted JSON/raw output max 288. Result fold defaults closed for success, open for failure. Preserve truncation, image-result and artifact controls; errors name code/message without replacing prior output. |
 | Activity group | One chrome-label summary and chevron for contiguous quiet calls, cyan category icons/status, counts/time mono; collapsed hides child rows, open draws the same tool recipes. Running state visible while collapsed; reasoning keeps its own row. |
@@ -868,7 +870,12 @@ Tooltip offset 6/collision 8, max 18rem, md/hairline-strong/float, x 10/y 6/gap 
 xs/snug/wrap-anywhere, large scrim/40 shadow, no arrow. First delay 250ms,
 skip window 400ms. With keycap right padding 6. Reasons remain readable from a
 focusable disabled wrapper, not only on pointer hover. Session and PR tooltips
-may include the rich facts described in §9 and gui.md.
+may include the rich facts described in §9 and gui.md. Focus shows a tooltip
+only when it follows the keyboard or comes before any input. The phone layout
+(the media test the phone frame uses) asks more: only focus after a Tab press
+shows one, so focus the app moves itself (a side sheet restored on reload
+takes it) floats nothing over the window's notices, and no tooltip there
+carries a key legend ("Enter / Space"), as nothing on a phone presses it.
 
 ### 11.3 Palette, banners and transient toasts
 
