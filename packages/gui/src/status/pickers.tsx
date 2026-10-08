@@ -4,10 +4,15 @@ import {
   UNREAD_ACCOUNT,
   aboveCeilingWords,
   containmentWords,
+  effortName,
   identityWords,
+  modelChoiceWords,
+  modelDisplayName,
   modelName,
   modelsOf,
-  readingWords,
+  nextRunWords,
+  pickerModels,
+  pinWords,
   gaugeOf,
   sessionModeOf,
   setSessionContainment,
@@ -16,23 +21,26 @@ import {
   type ContainmentBadge,
   type RunChoice,
 } from "@agent-harness/client-runtime";
-import { ArrowRightLeft, Box, Check, Cpu, KeyRound, Plus, RefreshCw, Search, Shield, SlidersHorizontal } from "lucide-react";
-import { BYPASS_SENTENCE, CONTAINMENT_LEVELS, type AccountRecord } from "@agent-harness/contracts";
-import { createContext, Fragment, use, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRightLeft, Box, Check, Cpu, KeyRound, Layers, Plus, RefreshCw, Search, Shield, SlidersHorizontal, Star } from "lucide-react";
+import { BYPASS_SENTENCE, CONTAINMENT_LEVELS, type AccountRecord, type Mode, type ModelEntry } from "@agent-harness/contracts";
+import { createContext, Fragment, use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSlashCommand } from "../composer/slash-commands.js";
 import { THIS_MACHINE } from "../frame/sidebar-region.js";
 import type { Offer } from "../keys/key-dispatch.js";
 import { usePaneLine } from "../session/pane-line.js";
 import { classes } from "../ui/classes.js";
-import { Button, Menu, MenuItem, MenuSeparator, Tooltip } from "../ui/index.js";
+import { Button, Menu, MenuItem, MenuLabel, MenuSeparator, Tooltip } from "../ui/index.js";
 import { useFollowed, useObservable, useRuntime } from "../window-context.js";
 import { useHandOffOnto } from "./hand-off.js";
 import { useSignInCard } from "./pane-dialogs.js";
-import { MenuSub, MenuSubContent, MenuSubTrigger } from "../ui/menu.js";
+import { MenuGroup, MenuSub, MenuSubContent, MenuSubTrigger } from "../ui/menu.js";
 import { SessionBrowserPicker } from "../browser/session-picker.js";
+import { useSettingsIfHeld } from "../settings/settings-window.js";
 import { RunChoiceRow, RunPickerColumn, RunPickerContent, RunPickerSteps, RunPickerTrigger, moveInColumns, useNarrowRunPicker, type RunStage } from "./run-picker-parts.js";
+import { useSayModeSet } from "./mode-said.js";
 import { ModeSheet, focusModeSheet, trapModeSheetTab } from "./mode-sheet.js";
 import { useHandedOnto, useModelChoice } from "./run-choices.js";
+import { UsageRings } from "./window-reading.js";
 
 /**
  * The status line's pickers (docs/specs/gui.md, "A session pane": pickers
@@ -46,13 +54,21 @@ import { useHandedOnto, useModelChoice } from "./run-choices.js";
  * `setSessionContainment`, the hand-off), so the terminal UI says the same.
  *
  * - **Accounts**: the environment's accounts, each with its identity, its
- *   sign-in status and its identity's plan reading, then Add an account.
+ *   sign-in status and its identity's plan windows as compact usage rings
+ *   (the reading in words their tooltip; #1822), then Add an account.
  *   An account not signed in starts its sign-in on the sign-in card; a
  *   session's account is fixed, so another signed-in account hands the
  *   session off onto it, the hand-off picker's fork.
  * - **Models**: the models of the session's account (every account's, once
  *   each, while the session has none) with their efforts, the model's own
- *   first; the choice goes with the session's next run.
+ *   first; the choice goes with the session's next run. The favourite models
+ *   (`accounts.favouriteModels`, #1821) the account lists come first as
+ *   one-click picks, else the provider's recommended models with how to pin
+ *   favourites; every other model is under Other models, a flyout opened on
+ *   hover, a click or the right arrow (where the picker shows one column at
+ *   a time, as on a phone, a tap opens it as the list's page, with a row
+ *   back to the quick picks), grouped by account
+ *   while the session has none. A search typed lists every model that matches.
  * - **Modes**: the four, one above the connection's ceiling greyed with the
  *   ceiling named. It can still be chosen: the environment's clamp answers
  *   it, and the line says the clamp (a mode is lowered, never refused).
@@ -167,6 +183,15 @@ const useOffer = (environmentId: string, name: CapabilityName): Offer => {
   return runtime.capability(environmentId, name);
 };
 
+const NO_FAVOURITES: readonly string[] = [];
+
+/** The environment's favourite models (`accounts.favouriteModels`) as the request cache last read them; none until they are read, or where they cannot be. */
+const useFavouriteModels = (environmentId: string): readonly string[] => {
+  const runtime = useRuntime();
+  const answer = useObservable(useMemo(() => runtime.requests.cached(environmentId, "settings.get", {}), [runtime, environmentId]));
+  return answer.result?.values["accounts.favouriteModels"] ?? NO_FAVOURITES;
+};
+
 /** The environment's name as the line says it. */
 const useEnvironmentName = (environmentId: string): string => {
   const environments = useObservable(useRuntime().projections.environments);
@@ -211,8 +236,26 @@ export const RunPickerColumns = ({ environmentId, sessionId, accountId, model, i
   const narrow = compact || windowIsNarrow;
   const [activeColumn, setActiveColumn] = useState<RunStage>(initialStage);
   const [query, setQuery] = useState("");
-  const [full, setFull] = useState(false);
+  const [othersOpen, setOthersOpen] = useState(false);
+  const othersList = useRef<HTMLDivElement>(null);
+  // Other models drilled into from the top of the list, the keyboard on its first row; back out, on its row.
+  const drilled = useRef(false);
+  useEffect(() => {
+    const list = othersList.current;
+    if (list !== null) {
+      drilled.current = true;
+      list.closest("[data-run-list]")?.scrollTo?.({ top: 0 });
+      list.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    } else if (drilled.current) {
+      drilled.current = false;
+      document.querySelector<HTMLElement>('[data-run-column="Models"] [role="menuitem"][aria-label="Other models"]')?.focus();
+    }
+  }, [othersOpen, narrow]);
+  const favourites = useFavouriteModels(environmentId);
+  const settingsWindow = useSettingsIfHeld();
   const models = catalogues.value === null ? [] : modelsOf(catalogues.value, accountId);
+  const picked = pickerModels(catalogues.value ?? [], accountId, favourites, model?.model);
+  const pin = pinWords(picked, favourites);
   const selected = models.find((entry) => entry.id === model?.model);
   const live = ["starting", "running", "parked"].includes(runs.state);
   const reason = live ? "Wait for this run to end before changing its account or model." : undefined;
@@ -221,7 +264,7 @@ export const RunPickerColumns = ({ environmentId, sessionId, accountId, model, i
     if (listingModels.status === "absent") return say(listingModels.message);
     choose({ model: id, effort });
     if (narrow && models.find((entry) => entry.id === id)?.efforts.length) setActiveColumn("Effort");
-    say(`The next run of ${session} goes out on ${id} at ${effort === null ? "its own effort" : `${effort} effort`}.`);
+    say(nextRunWords(session, { model: id, effort }, models.find((entry) => entry.id === id)?.label));
   };
   const pickAccount = (candidate: AccountRecord) => {
     if (reason !== undefined) return say(reason);
@@ -236,8 +279,17 @@ export const RunPickerColumns = ({ environmentId, sessionId, accountId, model, i
   };
   const active = activeColumn === "Effort" && (selected?.efforts.length ?? 0) === 0 ? "Models" : activeColumn;
   const column = (name: "Accounts" | "Models" | "Effort", children: ReactNode) => <RunPickerColumn name={name} narrow={narrow} activeColumn={active} showEffortWithModel={false}>{children}</RunPickerColumn>;
-  const visible = models.filter((entry) => `${entry.label ?? ""} ${entry.id}`.toLowerCase().includes(query.toLowerCase()));
-  const quick = model?.model === undefined ? models.slice(0, 5) : models.filter((entry, index) => entry.id === model.model || index < 5);
+  const visible = models.filter((entry) => `${modelName(entry)} ${entry.label ?? ""}`.toLowerCase().includes(query.toLowerCase()));
+  const accountLabel = (id: string) => accounts.value?.find((entry) => entry.id === id)?.label ?? id;
+  const modelRow = (entry: ModelEntry) => <RunChoiceRow key={entry.id} icon={favourites.includes(entry.id) ? Star : Cpu} label={modelName(entry)} primary={modelDisplayName(entry.id, entry.label)} machine={modelDisplayName(entry.id, entry.label) === entry.id ? undefined : entry.id}
+    selected={model?.model === entry.id} dim={live || listingModels.status === "absent"} note={entry.efforts.length > 0 ? "Supports effort" : "Uses its own effort"}
+    onSelect={() => { setOthersOpen(false); chosen(entry.id, model?.model === entry.id && (model.effort === null || entry.efforts.includes(model.effort)) ? model.effort : null); }} />;
+  // Other models: a flyout beside the column; in one column at a time (a phone's sheet), where a flyout has no room, a page of the list.
+  const othersNote = `${picked.others.reduce((count, group) => count + group.models.length, 0)} more`;
+  const otherGroups = picked.others.map((group) => <MenuGroup key={group.accountId} aria-label={picked.grouped ? accountLabel(group.accountId) : undefined}>
+    {picked.grouped && <MenuLabel className="px-2.5 py-1.5">{accountLabel(group.accountId)}</MenuLabel>}
+    {group.models.map(modelRow)}
+  </MenuGroup>);
   return <div data-run-picker data-narrow={narrow ? "true" : undefined} className={classes("flex flex-col", narrow && "w-[min(512px,calc(100vw-16px))]")}
     onKeyDownCapture={moveInColumns}>
     {narrow && <RunPickerSteps stage={active} effort={(selected?.efforts.length ?? 0) > 0} change={setActiveColumn} />}
@@ -249,7 +301,7 @@ export const RunPickerColumns = ({ environmentId, sessionId, accountId, model, i
           {accounts.value.map((candidate) => <RunChoiceRow key={candidate.id} icon={candidate.id === accountId ? KeyRound : ArrowRightLeft}
             label={`${candidate.label} ${identityWords(candidate)}`} selected={candidate.id === accountId} dim={live || listingAccounts.status === "absent"}
             note={[ACCOUNT_STATUS_WORDS[candidate.status.state], candidate.id === accountId ? "this session" : candidate.status.state === "signed-in" ? "Fork onto this account" : "Sign in", candidate.provider].join(" · ")}
-            under={readingWords(gaugeOf(usage.gauges, environmentId, candidate.id))} onSelect={() => pickAccount(candidate)} />)}
+            usage={<UsageRings gauge={gaugeOf(usage.gauges, environmentId, candidate.id)} />} onSelect={() => pickAccount(candidate)} />)}
         </>}
         {accountId !== null && accounts.value !== null && !accounts.value.some((entry) => entry.id === accountId) && <Waiting>Stored account {accountId} is not listed on this environment.</Waiting>}
         {accounts.error !== null && <RunChoiceRow icon={RefreshCw} label="Refresh accounts" onSelect={() => runtime.requests.refresh(environmentId, "accounts.list", {})} />}
@@ -261,10 +313,21 @@ export const RunPickerColumns = ({ environmentId, sessionId, accountId, model, i
       {column("Models", <>
         {catalogues.value === null ? <Waiting>{catalogues.error ? `The models could not be read: ${catalogues.error.message}` : "Reading the models…"}</Waiting> : <>
           {models.length > 12 && <label title="Search models · Type to filter · Tab next column" className="mb-1 flex items-center gap-2 rounded-md bg-wash px-2"><Search aria-hidden="true" className="size-3" /><input aria-label="Search models" value={query} onChange={(event) => setQuery(event.target.value)} className="h-8 min-w-0 w-full bg-transparent text-xs outline-none" /></label>}
-          {models.length > 5 && <RunChoiceRow icon={Search} label={full ? "Quick choices" : "All models"} onSelect={() => setFull(!full)} />}
-          {(full || query !== "" ? visible : quick).map((entry) => <RunChoiceRow key={entry.id} icon={Cpu} label={modelName(entry)} primary={entry.label ?? entry.id} machine={entry.label === null ? undefined : entry.id}
-            selected={model?.model === entry.id} dim={live || listingModels.status === "absent"} note={entry.efforts.length > 0 ? "Supports effort" : "Uses its own effort"}
-            onSelect={() => chosen(entry.id, model?.model === entry.id && (model.effort === null || entry.efforts.includes(model.effort)) ? model.effort : null)} />)}
+          {query !== "" ? visible.map(modelRow) : narrow && othersOpen && picked.others.length > 0 ? <>
+            <RunChoiceRow icon={ArrowLeft} label="Back to the quick picks" onSelect={() => setOthersOpen(false)} />
+            <div ref={othersList} role="group" aria-label="Other models" data-other-models-list>{otherGroups}</div>
+          </> : <>
+            {pin !== undefined && models.length > 0 && <Waiting>{pin}</Waiting>}
+            {picked.quick.map(modelRow)}
+            {picked.others.length > 0 && (narrow ? <RunChoiceRow icon={Layers} label="Other models" note={othersNote} onSelect={() => setOthersOpen(true)} /> : <MenuSub open={othersOpen} onOpenChange={setOthersOpen}>
+              <MenuSubTrigger aria-label="Other models" title="Other models · Right arrow to open · ↑ ↓ Home End" data-other-models className="items-start gap-2 px-2.5 py-2 text-xs [&_svg]:size-3">
+                <Layers aria-hidden="true" className="mt-0.5" /><span className="min-w-0 flex-1"><span className="block font-medium">Other models</span><span className="block text-2xs text-ink-muted">{othersNote}</span></span>
+              </MenuSubTrigger>
+              <MenuSubContent aria-label="Other models" data-other-models-list className="w-72 max-h-[320px] overflow-y-auto p-1.5">{otherGroups}</MenuSubContent>
+            </MenuSub>)}
+            {settingsWindow !== null && models.length > 0 && <RunChoiceRow icon={Star} label={picked.pinned ? "Edit favourites…" : "Pin favourites…"} under="In Settings, Default account and model."
+              onSelect={() => { close(); settingsWindow.open("accounts.default-model", environmentId); }} />}
+          </>}
           {model !== undefined && selected === undefined && <Waiting>Stored model {model.model} is not listed for this account. Choose an available model for the next run.</Waiting>}
           {models.length === 0 && <Waiting>No model is listed for this account.</Waiting>}
           {models.length > 0 && visible.length === 0 && <Waiting>No models match your search.</Waiting>}
@@ -273,7 +336,7 @@ export const RunPickerColumns = ({ environmentId, sessionId, accountId, model, i
         {listingModels.status === "absent" && <Waiting>{listingModels.message}</Waiting>}
       </>)}
       {selected !== undefined && selected.efforts.length > 0 && column("Effort", <>
-        {[null, ...selected.efforts].map((effort) => <RunChoiceRow key={effort ?? "own"} icon={SlidersHorizontal} label={effort ?? "its own effort"}
+        {[null, ...selected.efforts].map((effort) => <RunChoiceRow key={effort ?? "own"} icon={SlidersHorizontal} label={effort === null ? "its own effort" : effortName(effort)}
           selected={model?.effort === effort} dim={live || listingModels.status === "absent"} note={model?.effort === effort ? "this session" : undefined}
           under={effort === null ? "Let the model choose its effort." : "Reasoning effort for the next run."}
           onSelect={() => { chosen(selected.id, effort); if (!live && listingModels.status === "present") close(); }} />)}
@@ -311,8 +374,9 @@ export const ModelPicker = ({ environmentId, sessionId, accountId, model }: Mode
   const [choice] = useModelChoice(environmentId, sessionId);
   const handedOnto = useHandedOnto(environmentId, sessionId);
   const current = choice ?? model;
-  const unavailable = current !== undefined && catalogues.value !== null && !modelsOf(catalogues.value, accountId ?? handedOnto ?? null).some((entry) => entry.id === current.model);
-  const words = current === undefined ? "default model" : current.effort !== null ? `${current.model} ${current.effort}` : current.model;
+  const listed = current === undefined || catalogues.value === null ? undefined : modelsOf(catalogues.value, accountId ?? handedOnto ?? null).find((entry) => entry.id === current.model);
+  const unavailable = current !== undefined && catalogues.value !== null && listed === undefined;
+  const words = current === undefined ? "default model" : modelChoiceWords(current, listed?.label);
   return <PickerButton name="Model" command="model" value={words} offer={useOffer(environmentId, "models.list")} columns
     items={(close) => <RunPickerColumns environmentId={environmentId} sessionId={sessionId} accountId={accountId} model={current} initialStage="Models" close={close} />}
     warning={unavailable ? "This stored model is not listed for this account. Choose an available model for the next run." : undefined}>
@@ -323,6 +387,8 @@ export const ModelPicker = ({ environmentId, sessionId, accountId, model }: Mode
 interface ModePickerProps {
   readonly environmentId: string;
   readonly sessionId: string;
+  /** The session's mode as the status line shows it: bypassPermissions carries its sentence in the button's tooltip (#1823). */
+  readonly mode: Mode;
   /** The mode badge the status line shows, with its clamp, in words. */
   readonly value: string;
   readonly children: ReactNode;
@@ -332,13 +398,13 @@ const ModeRows = ({ environmentId, sessionId }: { readonly environmentId: string
   const runtime = useRuntime();
   const picker = useObservable(useMemo(() => runtime.projections.modes(environmentId), [runtime, environmentId]));
   const projection = useObservable(useMemo(() => runtime.projections.session(environmentId, sessionId), [runtime, environmentId, sessionId]));
-  const [, say] = usePaneLine();
+  const sayModeSet = useSayModeSet();
   const session = projection.summary?.title ?? "this session";
   const own = sessionModeOf(projection.summary?.mode, picker.ceiling);
   return picker.modes.map(({ mode, allowed }) => (
       <Item
         key={mode}
-        onSelect={() => void setSessionMode(runtime, environmentId, sessionId, mode, session).then((set) => say(set.line))}
+        onSelect={() => void setSessionMode(runtime, environmentId, sessionId, mode, session).then(sayModeSet)}
         dim={!allowed}
         selected={mode === own}
         tooltip={modeLabel(MODE_BADGE_WORDS[mode])}
@@ -358,12 +424,17 @@ const ModeSubmenu = ({ environmentId, sessionId }: { readonly environmentId: str
   </MenuSub>;
 };
 
-/** The mode picker: the four modes, one above the connection's ceiling greyed with the ceiling named, and the clamp said once set. */
-export const ModePicker = ({ environmentId, sessionId, value, children }: ModePickerProps) => {
+/**
+ * The mode picker: the four modes, one above the connection's ceiling greyed
+ * with the ceiling named, and the clamp said once set. The button shows the
+ * mode, bypassPermissions with its sentence in the tooltip, so nothing says
+ * it under the composer for as long as it holds (#1823).
+ */
+export const ModePicker = ({ environmentId, sessionId, mode, value, children }: ModePickerProps) => {
   const setting = useOffer(environmentId, "permissions.mode.set");
   const items = () => <ModeRows environmentId={environmentId} sessionId={sessionId} />;
   return (
-    <PickerButton name="Mode" command="mode" value={value} offer={setting} items={items} phoneItems={(close) => <ModeSheet environmentId={environmentId} sessionId={sessionId} close={close} />}>
+    <PickerButton name="Mode" command="mode" value={value} offer={setting} items={items} warning={mode === "bypassPermissions" ? BYPASS_SENTENCE : undefined} phoneItems={(close) => <ModeSheet environmentId={environmentId} sessionId={sessionId} close={close} />}>
       {children}
     </PickerButton>
   );

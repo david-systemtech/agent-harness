@@ -62,6 +62,17 @@ this variable when `--web-origin` is absent; `service install` does not take
 `--web-origin`. Keep the same data directory and listener port. The foreground command above
 is an alternative to a running service, not a second environment on its port.
 
+Behind Serve every phone reaches the environment from `127.0.0.1`. For a
+request from loopback whose Host is the web origin's, the environment takes the
+client's address from the `X-Forwarded-For` header Serve sends, and its
+Tailscale login from `Tailscale-User-Login`, which Serve drops when a client
+sends it: the Access log shows them, and each phone spends its own pairing
+rate limit. It never trusts those headers from a tailnet or LAN address. A
+proxy that is not Serve is named by the header it writes the address in, with
+`--client-address-header` or `AGENT_HARNESS_CLIENT_ADDRESS_HEADER`, even when
+that header is `X-Forwarded-For`; behind a named proxy no login is read, since
+it passes a client's own `Tailscale-User-Login` on.
+
 Install Tailscale on the phone, join the same tailnet and connect. Open
 `https://<device>.<tailnet>.ts.net:8443/`. Tailnet encryption alone does not
 make `http://<address>:7433` a browser secure origin. Plain tailnet HTTP lacks
@@ -199,8 +210,10 @@ and check the notification; **Disable push** removes this client's registration.
 If permission is denied, the client explains it rather than repeatedly asking.
 Change the OS/browser permission explicitly to retry, or select **Use fallback**
 for an available configured webhook route. The fallback list shows delivery
-status/failure; ask an admin if none is configured or a global route is disabled.
-A read-granted client can manage its own targets, not global routes.
+status/failure. A client paired with the admin grant adds the route itself (see
+below); any other client asks an admin when none is configured or a global
+route is disabled. A read-granted client can manage its own targets, not
+global routes.
 
 The environment sends the generic **A session needs you** with an HTTPS
 session link after an ask has waited six seconds; answers/expiry cancel queued
@@ -213,10 +226,22 @@ opt-in and silent outcomes stay quiet.
 
 ### Operator recipe: signed webhook to Matrix
 
-An admin configures a dedicated named endpoint and attention route over the
-existing authenticated wire. There is no `agent-harness attention` CLI verb
-and the Attention UI controls existing routes rather than creating endpoint
-secrets. Use these method/parameter shapes from a trusted admin client:
+An admin adds the route from a client paired with the admin grant (the
+**My own client** preset): **Settings > Attention** (bell button), **Add a
+webhook route**. Type a name (lower-case letters, digits and hyphens, such as
+`phone-attention`), the receiver's URL and a dedicated signing secret, then
+**Add route**. The environment keeps the endpoint under that name, with its
+secret in its vault, and adds a global route naming it, shown as **Signed
+webhook · Global route**. Tap **Test** on that route to post a signed test to
+the receiver and read the status it answered. A new route is
+saved disabled and enabled only once its endpoint is saved; an endpoint the
+environment refuses (an `http` URL to an internet host, a denylisted host)
+takes the new route away again. A name another endpoint already has, such as
+a routine's, is refused rather than replaced, and adding a route's own name
+again replaces its URL and secret, which finishes a route left disabled.
+
+There is no `agent-harness attention` CLI verb. A script can make the same
+two calls over the authenticated wire with an admin token:
 
 ```text
 routines.endpoints.set

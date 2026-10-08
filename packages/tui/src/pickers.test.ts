@@ -243,13 +243,13 @@ describe("/model", () => {
     await command(app, "/model");
     await app.waitFor("Models for work on desk");
     await app.waitFor("Opus 4 (claude-opus-4)");
-    expect(app.rows().find((row) => row.includes("claude-opus-4"))).toMatch(/Opus 4 \(claude-opus-4\)\s+low · medium · high\s+this session/);
+    expect(app.rows().find((row) => row.includes("claude-opus-4"))).toMatch(/Opus 4 \(claude-opus-4\)\s+Low · Medium · High\s+this session/);
     expect(app.frame()).toContain("claude-haiku-4");
     await app.press(KEY.enter);
     await app.waitFor("Effort for Opus 4");
     await app.press(KEY.down, KEY.down, KEY.down, KEY.enter);
-    await app.waitFor("The next run of Receipts goes out on claude-opus-4 at high effort.");
-    await app.waitFor("claude-opus-4 high ·");
+    await app.waitFor("The next run of Receipts goes out on Opus 4 - High.");
+    await app.waitFor("Opus 4 - High ·");
 
     await app.type("go");
     await app.press(KEY.enter);
@@ -273,20 +273,20 @@ describe("/model", () => {
     await app.press(KEY.enter);
     await app.waitFor("Effort for Opus 4");
     await app.press(KEY.down, KEY.down, KEY.down, KEY.enter);
-    await app.waitFor("The next run of Receipts goes out on claude-opus-4 at high effort.");
+    await app.waitFor("The next run of Receipts goes out on Opus 4 - High.");
     // The session is on Opus 4 at high: Sonnet 4's high is not the session's, nor is its own effort.
     await command(app, "/model");
     await app.waitFor("Sonnet 4 (claude-sonnet-4)");
     await app.press(KEY.down, KEY.down, KEY.enter);
     await app.waitFor("Effort for Sonnet 4");
-    expect(app.rows().find((row) => row.includes("high"))).not.toContain("this session");
+    expect(app.rows().find((row) => row.includes("High"))).not.toContain("this session");
     expect(app.rows().find((row) => row.includes("the model's own"))).not.toContain("this session");
     // Opus 4's high still is.
     await app.press(KEY.esc);
     await app.waitFor("Models for work on desk");
     await app.press(KEY.up, KEY.up, KEY.enter);
     await app.waitFor("Effort for Opus 4");
-    expect(app.rows().find((row) => row.includes("high"))).toContain("this session");
+    expect(app.rows().find((row) => row.includes("High"))).toContain("this session");
   });
 });
 
@@ -505,8 +505,8 @@ describe("/settings", () => {
     expect(frame).toMatch(/Maximum permission mode\s+acceptEdits/);
     expect(frame).toMatch(/Unanswered permission timeout\s+24 hours/);
     expect(frame).toMatch(/Permission bypass acknowledged\s+none\s+read-only/);
-    // Down to the Service row's keys, past the four, one, five, nine, two and seven of the rows above it.
-    await app.press(...Array.from({ length: 28 }, () => KEY.down));
+    // Down to the Service row's keys, past the five, one, five, nine, two and seven of the rows above it.
+    await app.press(...Array.from({ length: 29 }, () => KEY.down));
     await app.waitFor(/Settle idle sessions\s+14 days/);
     // The key under the cursor says what it is.
     expect(app.frame()).toContain("Move quiet sessions out of the active list after this long.");
@@ -520,7 +520,7 @@ describe("/settings", () => {
     await command(app, "/settings");
     await app.waitFor("Settings on desk");
     // A typed value, checked against the key's schema before it is sent.
-    await app.press(KEY.down, KEY.down, KEY.down, KEY.enter);
+    await app.press(KEY.down, KEY.down, KEY.down, KEY.down, KEY.enter);
     await app.waitFor("New value for Stop idle agent processes after minutes (now 30)");
     // The value being typed holds its key: ↓ moves nothing.
     await app.press(KEY.down);
@@ -587,7 +587,7 @@ describe("/settings", () => {
     const { app } = await launch();
     await command(app, "/settings");
     await app.waitFor("Settings on desk");
-    await app.press(KEY.down, KEY.down, KEY.down, KEY.down, KEY.down, KEY.down, KEY.enter);
+    await app.press(KEY.down, KEY.down, KEY.down, KEY.down, KEY.down, KEY.down, KEY.down, KEY.enter);
     await app.waitFor("Unattended permission mode:");
     await app.press(KEY.down, KEY.enter);
     await app.waitFor("Make bypassPermissions the unattended mode? y/n");
@@ -635,7 +635,7 @@ describe("/settings by row (#389)", () => {
     expect(app.frame()).toMatch(/Default account and model\n.*Default account\s+none/);
     expect(app.frame()).toContain("The account to use when a session has no account of its own.");
     // Down the list, each row's label over its keys: Instructions, then Permissions, then Browser, then Key managers, then Your machines, then Service.
-    await app.press(...Array.from({ length: 30 }, () => KEY.down));
+    await app.press(...Array.from({ length: 31 }, () => KEY.down));
     await app.waitFor(/Compact quiet transcripts after days\s+90/);
     const lines = linesOf(app.frame());
     const at = (text: string) => lines.findIndex((line) => line.startsWith(text));
@@ -900,6 +900,20 @@ describe("/setup", () => {
     expect(app.frame()).not.toContain("Action: Update gh");
     await app.press(KEY.enter);
     expect(env.requests("tools.run")).toEqual([]);
+  });
+
+  it("offers a tool update the table cannot drive, which runs in a tool terminal held until Enter (#1833)", async () => {
+    const { app, env } = await launch([desk({ capabilities: ["setup", "managedTools"],
+      keyManagers: { tools: [{ tool: "gh", action: "terminal", method: "unknown", status: "method-unknown", command: "brew install gh" }] },
+      setup: { ...Object.fromEntries(STEP_ORDER.map((step) => [step, null])),
+        forges: { state: "needs-attention", reason: "gh needs attention.", actions: ["update"], targets: [{ action: "update", kind: "tool", id: "gh", label: "gh" }] },
+      },
+    })]);
+    await command(app, "/setup");
+    await app.waitFor("Action: Update gh");
+    await app.press(KEY.enter);
+    await app.waitUntil(() => env.requests("tools.run").length === 1, "the update sent");
+    expect(env.requests("tools.run").map((request) => [request.params["tool"], request.params["action"]])).toEqual([["gh", "update"]]);
   });
 
   it("keeps unreachable results cached and stale without checking them", async () => {

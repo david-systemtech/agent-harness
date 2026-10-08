@@ -16,7 +16,6 @@ export async function phoneRunPickerSmoke(page: Page, engine: string): Promise<v
   const models = choices.getByRole("group", { name: "Models", exact: true });
   const search = models.getByRole("textbox", { name: "Search models" });
   await expect(search).toBeVisible();
-  await models.getByRole("menuitem", { name: "All models", exact: true }).click();
   await search.focus();
   await page.evaluate(`(() => {
     const viewport = window.visualViewport;
@@ -90,7 +89,7 @@ async function phoneComposerSheetsSmoke(page: Page, engine: string): Promise<voi
   try {
     for (const { trigger, title } of [
       { trigger: toolbar.getByRole("button", { name: /^Workspace:/ }), title: "Workspace" },
-      { trigger: toolbar.getByRole("button", { name: /^Workspace check:/ }), title: "Workspace check" },
+      { trigger: toolbar.getByRole("button", { name: /^After-edit check:/ }), title: "After-edit check" },
       { trigger: toolbar.getByRole("button", { name: "Run settings", exact: true }), title: "Run settings" },
     ]) {
       await trigger.click();

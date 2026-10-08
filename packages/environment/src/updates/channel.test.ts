@@ -451,15 +451,22 @@ describe("the Your machines step's release channel check", () => {
     const first = await startTestEnvironment({ dataDir, releaseSource: fake.source, forgeFetch: fake.forge.fetch });
     const admin = await first.client();
     await fake.grantAccess(admin);
-    expect((await admin.request("updates.check", {})).lastCheck).toMatchObject({ result: "ok" });
+    const read = await admin.request("updates.check", {});
+    expect(read.lastCheck).toMatchObject({ result: "ok" });
+    expect(read.lastReadAt).toBe(read.lastCheck?.at);
+    expect(read.readSinceStart).toBe(true);
     expect(await result(admin)).toMatchObject({ state: "done" });
     await first.close();
 
     await fake.forge.close();
     const second = await start({ dataDir, releaseSource: fake.source, forgeFetch: fake.forge.fetch });
     const client = await second.client();
+    // Before its first check, the last read is the one the first environment kept (#1812).
+    expect(channelOf(await client.request("updates.status", {}))).toEqual({ newest: null, lastCheck: null, target: null, passedOver: null });
+    expect(await client.request("updates.status", {})).toMatchObject({ lastReadAt: read.lastReadAt, readSinceStart: false });
     second.clock.advance(24 * HOUR - MINUTE);
-    expect((await checked(client)).lastCheck).toMatchObject({ result: "failed", reason: "unreachable" });
+    // A check since that failed did not read it (#1818).
+    expect(await checked(client)).toMatchObject({ lastCheck: { result: "failed", reason: "unreachable" }, readSinceStart: false });
     expect(await result(client)).toMatchObject({ state: "done" });
 
     second.clock.advance(MINUTE + 1);

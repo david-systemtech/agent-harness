@@ -512,7 +512,8 @@ export {
 } from "./terminals/one-off.js";
 export { xtermFull, xtermScreen, xtermText, type TextScreen, type TextScreens, type Xterm } from "./terminals/text-screen.js";
 export { TERMINAL_WRITE_CAP, nextWrite } from "./terminals/writes.js";
-export { choiceRows, joinAnswers, noteOf, rowAnswer, ttlWords, type ChoiceRow, type RowOutcome } from "./prompts/card.js";
+export { buttonRows, choiceRows, joinAnswers, noteOf, rowAnswer, ttlWords, type ChoiceRow, type RowOutcome } from "./prompts/card.js";
+export { denylistMatchWords, denylistRepeatWords, type AskedPrompt, type DenylistMatchWords } from "./prompts/denylist.js";
 export { answerPrompt, type AnswerOutcome, type PromptTarget } from "./prompts/answer.js";
 export { BULK_LEAST, askDetail, bulkAsks, bulkQuestion, decidable, inBulk } from "./prompts/asks.js";
 export {
@@ -537,11 +538,15 @@ export {
   aboveCeilingWords,
   clampWords,
   containmentWords,
+  effortName,
   elapsedClock,
   gaugeOf,
   identityWords,
+  modelChoiceWords,
+  modelDisplayName,
   modelName,
   modelsOf,
+  nextRunWords,
   percent,
   pressureOf,
   readingWords,
@@ -614,6 +619,18 @@ export {
 } from "./accounts/words.js";
 export { adoptAccount, modelPreset, presetModelDefaults, relabelAccount, removeAccount, type AccountOutcome, type ModelPreset } from "./accounts/actions.js";
 export {
+  RECOMMENDED_MODELS,
+  addFavourite,
+  favouriteCandidates,
+  moveFavourite,
+  pickerModels,
+  pinWords,
+  recommendedModels,
+  removeFavourite,
+  type ModelGroup,
+  type PickerModels,
+} from "./accounts/favourites.js";
+export {
   DENYLIST_SECTION_NAMES,
   DENYLIST_TEST_KIND_NAMES,
   NOTHING_TO_REVIEW,
@@ -679,6 +696,7 @@ export {
   noCommandWords,
   requiredWords,
   runWords,
+  terminalCommandWords,
   toolRunWords,
   verificationWords,
 } from "./managed-tools/words.js";
@@ -690,7 +708,7 @@ export { NO_RUN_YET, runInfoFacts } from "./status/run-info.js";
 export { terminalAnswers } from "./terminals/answers.js";
 export type { RoutineMoves, RoutineMove, RoutineMoveResult } from "./routine-moves.js";
 
-export type { Checks, ChecksView } from "./checks.js";
+export { checkWords, type Checks, type ChecksView } from "./checks.js";
 export { undoFile, fileUndoWords, type FileUndoResult } from "./files/undo.js";
 export { clientLocalImportValues } from "./state-import.js";
 

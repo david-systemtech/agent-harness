@@ -164,7 +164,7 @@ describe("the minted session on its card", () => {
       env.setSetup({ "memory-bank": { state: "done", reason: "BANK.md landed.", actions: ["revise"] } });
       env.passSetup(["memory-bank"]);
     });
-    await waitFor(() => expect(within(screen.getByRole("navigation", { name: "Set up steps" })).getByRole("img", { name: "Memory bank: done" })).toBeDefined());
+    await waitFor(() => expect(within(screen.getByRole("navigation", { name: "Set up steps" })).getByRole("img", { name: "Memory bank: Done" })).toBeDefined());
     await app.user.click(screen.getByRole("button", { name: "Memory bank" }));
     await app.user.click(await screen.findByRole("button", { name: "Continue authoring" }));
     expect(await screen.findByRole("textbox", { name: "Message" })).toBeDefined();
@@ -244,6 +244,20 @@ describe("the minted session on its card", () => {
     await waitFor(() => expect(select("Authoring model").value).toBe("small-model"));
     await app.user.selectOptions(select("Authoring model"), "large-model");
     expect(select("Authoring effort").value).toBe("low");
+  });
+
+  it("names the authoring models and efforts as the pickers do", async () => {
+    await openCard({
+      accounts: [{ id: "account-1", label: "Work" }],
+      models: [{ accountId: "account-1", models: [{ id: "fable", family: "fable", tier: 3, efforts: ["high", "xhigh"], label: "Fable" }, { id: "large-model", family: "large", tier: 1, efforts: [], label: "Large" }] }],
+      settings: { "accounts.defaultAccount": "account-1" },
+    });
+    const model = screen.getByRole("combobox", { name: "Authoring model" });
+    expect(await within(model).findByRole("option", { name: "Fable 5.1 (fable)" })).toBeDefined();
+    expect(within(model).getByRole("option", { name: "Large (large-model)" })).toBeDefined();
+    const effort = screen.getByRole("combobox", { name: "Authoring effort" });
+    await waitFor(() => expect(within(effort).getByRole("option", { name: "High" })).toBeDefined());
+    expect(within(effort).getByRole("option", { name: "Extra high" })).toBeDefined();
   });
 
   it("keeps its picker choices and attached session across a detour to a Settings row", async () => {

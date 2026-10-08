@@ -10,7 +10,6 @@ import {
   pastTimeWords,
   type ForgeAccountRecord,
   type PendingUpdate,
-  type UpdateCheck,
   type UpdateManager,
   type UpdateOutcome,
   type UpdateSettingsKey,
@@ -148,8 +147,34 @@ const managerLine = (manager: UpdateManager, now: Date): string => {
   }
 };
 
-const checkLine = (check: UpdateCheck | null): string => {
-  if (check === null) return "never";
+/**
+ * Whether a check since the start read the channel, as the environment says it (#1818). One that predates saying it
+ * is answered from what such a read shows, a newest, a target or a release passed over, or from a last check that
+ * ended ok; a read that found none of them is missed once a later check fails.
+ */
+const readSinceStart = ({ readSinceStart: said, newest, target, passedOver, lastCheck }: UpdatesStatus): boolean =>
+  said ?? (newest !== null || target !== null || passedOver !== null || lastCheck?.result === "ok");
+
+/** The channel's newest; with none since the start though the channel was read before it, that the read is due and when it last was (#1812). */
+const newestLine = (status: UpdatesStatus): string => {
+  const { newest, lastReadAt = null } = status;
+  if (newest !== null) return newest;
+  if (readSinceStart(status)) return "none on the channel";
+  if (lastReadAt === null) return "not read yet";
+  return `due, not read since the environment started; last read at ${lastReadAt}`;
+};
+
+/**
+ * The last check. With none ended since the start though the channel was read (#1812): when it last was, before the
+ * start while no check since read it, else by the first check since, which is still staging what it found.
+ */
+const checkLine = (status: UpdatesStatus): string => {
+  const { lastCheck: check, lastReadAt = null } = status;
+  if (check === null) {
+    if (lastReadAt === null) return "never";
+    if (readSinceStart(status)) return `under way, the first since the environment started; it read the channel at ${lastReadAt}`;
+    return `none since the environment started, the first due two minutes after it; the channel was last read at ${lastReadAt}`;
+  }
   return check.result === "ok" ? `${check.at}, ok` : `${check.at}, failed (${check.reason}): ${check.message}`;
 };
 
@@ -190,8 +215,8 @@ export const renderUpdatesStatus = (status: UpdatesStatus, now: Date): string =>
     `Updates: ${managerLine(status.manager, now)}`,
     ...(status.installed.length > 0 ? [`Installed: ${status.installed.join(", ")}`] : []),
     `Releases: ${status.releaseSource.origin}/${status.releaseSource.repository}`,
-    `Channel's newest: ${status.newest ?? "not read yet"}`,
-    `Last check: ${checkLine(status.lastCheck)}`,
+    `Channel's newest: ${newestLine(status)}`,
+    `Last check: ${checkLine(status)}`,
     `Target: ${targetLine(status.target)}`,
     ...(status.passedOver === null ? [] : [`Passed over: ${status.passedOver.version} (${status.passedOver.source}, ${status.passedOver.reason}): ${status.passedOver.message}`]),
     `Pending update: ${pendingLine(status.pending)}`,

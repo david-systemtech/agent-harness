@@ -88,11 +88,15 @@ export const StatusLine = ({ environmentId, sessionId, compact = false }: Status
   const details = <>
       <div id={detailsId} className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ${compact ? "" : "grow basis-[352px]"}`}>
         <span data-status-chip className="inline-flex h-[22px] max-w-[240px] items-center overflow-hidden rounded-md bg-wash px-1.5 [&_svg]:size-3 [&>span]:min-w-0 [&>span>span]:truncate" title={`${environment?.name ?? "This machine"}: ${environment?.phase ?? "connecting"}`}><EnvironmentBadge view={environment} /></span>
-        <AccountPicker environmentId={environmentId} sessionId={sessionId} accountId={facts.accountId} />
+        {/* Account shrinks first (look.md §10.5): a wrapping row breaks its lines at each chip's basis before anything shrinks, so
+            the account enters the row at 60px and grows back to its own width, capped at the chip's 240px, before another chip wraps.
+            60px fits the short 1024 × 768 stacked panes on one row; a smaller basis leaves a single letter where the row wraps anyway. */}
+        <span className={compact ? "contents" : "flex min-w-0 max-w-max grow basis-[60px]"}><AccountPicker environmentId={environmentId} sessionId={sessionId} accountId={facts.accountId} /></span>
         <ModelPicker environmentId={environmentId} sessionId={sessionId} accountId={facts.accountId} model={facts.model} />
         <ModePicker
           environmentId={environmentId}
           sessionId={sessionId}
+          mode={facts.mode.mode}
           value={`${modeLabel(MODE_BADGE_WORDS[facts.mode.mode])}${facts.mode.clampedFrom !== null ? ` ${clampWords(facts.mode.clampedFrom)}` : ""}`}
         >
           <span className={facts.mode.mode === "bypassPermissions" ? "font-semibold text-signal" : "text-ink"}>{modeLabel(MODE_BADGE_WORDS[facts.mode.mode])}</span>
@@ -102,7 +106,7 @@ export const StatusLine = ({ environmentId, sessionId, compact = false }: Status
         <SessionBrowserPicker environmentId={environmentId} sessionId={sessionId} />
         {facts.offer !== undefined ? <HandoffOffer offer={facts.offer} /> : <RunLine facts={facts} />}
       </div>
-      <span className="ml-auto flex shrink-0 items-center gap-2">
+      <span className="ml-auto flex min-w-0 max-w-full items-center gap-2">
         <SessionContextMeter environmentId={environmentId} sessionId={sessionId} accountId={facts.accountId} model={facts.model?.model ?? null} />
         <UsageMeter environmentId={environmentId} accountId={facts.accountId} />
       </span>

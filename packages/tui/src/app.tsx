@@ -9,7 +9,9 @@ import {
   browse,
   bulkAsks,
   bulkQuestion,
+  checkWords,
   decidable,
+  denylistRepeatWords,
   directoryOf,
   followDraft,
   inWorkspace,
@@ -47,6 +49,7 @@ import {
   type Notice,
   type Observable,
   type PairingInput,
+  type PromptEntry,
   type SessionRow,
   type TranscriptEntry,
   type TranscriptRow as Row,
@@ -522,7 +525,7 @@ export const App = (props: AppProps) => {
   const checks = useMemo(() => opened ? runtime.projections.checks(opened.environmentId, opened.sessionId) : undefined, [runtime, opened]);
   useFollow(checks, request);
   const checkView = checks?.read();
-  const checkUnavailable = checkView?.availability.status === "absent" ? ` Check: ${checkView.availability.message}` : undefined;
+  const checkUnavailable = checkView?.availability.status === "absent" ? ` ${checkWords.labelled(checkView.availability.message)}` : undefined;
   const checkOffer = checkView?.offer ? ` Send failure: Enter on an empty composer · ${checkView.offer.result?.timedOut ? "timeout" : "failure"}` : undefined;
   const checkSummaryRows = [checkUnavailable, checkOffer].reduce((rows, text) => rows + (text === undefined ? 0 : wrap([{ text }], size.columns).length), 0);
 
@@ -926,6 +929,8 @@ export const App = (props: AppProps) => {
   const runInfoEnvironment = screen.card.kind === "lines" && screen.card.which === "run-info" ? opened?.environmentId : undefined;
   const runInfoAccounts = useMemo(() => runInfoEnvironment === undefined ? undefined : runtime.projections.accounts(runInfoEnvironment), [runtime, runInfoEnvironment]);
   useFollow(runInfoAccounts, request);
+  const runInfoModels = useMemo(() => runInfoEnvironment === undefined ? undefined : runtime.projections.models(runInfoEnvironment), [runtime, runInfoEnvironment]);
+  useFollow(runInfoModels, request);
   const pickers = usePickers({
     runtime,
     request,
@@ -1310,11 +1315,11 @@ export const App = (props: AppProps) => {
         if (!opened) { say("Open a Session to configure its Workspace check."); return true; }
         const { environmentId, sessionId } = opened;
         const available = runtime.capability(environmentId, "checks.get");
-        if (available.status === "absent") { say(available.message); return true; }
+        if (available.status === "absent") { say(checkWords.labelled(available.message)); return true; }
         if (command.action === "get") {
           void runtime.checks.get(environmentId, sessionId).then(async (answer) => {
             runtime.requests.refresh(environmentId, "checks.get", { sessionId });
-            if (!answer.ok) { say(answer.error.message); return; }
+            if (!answer.ok) { say(checkWords.labelled(answer.error.message)); return; }
             let imported: string | undefined;
             if (answer.result.command === null && props.stateDir !== undefined && viewOf(environmentId)?.kind === "local") {
               try {
@@ -1325,15 +1330,15 @@ export const App = (props: AppProps) => {
                 }
               } catch { /* An unreadable local import enables nothing. */ }
             }
-            say(answer.result.command === null ? `Check is off for ${answer.result.workspace}.${imported === undefined ? "" : ` Imported (inert): ${imported}; save explicitly with /check <command>.`}` : `$ ${answer.result.command}`);
+            say(answer.result.command === null ? `${checkWords.offFor(answer.result.workspace)}${imported === undefined ? "" : ` Imported (inert): ${imported}; save explicitly with /check <command>.`}` : checkWords.command(answer.result.command));
           });
         } else if (command.action === "now") {
           void runtime.checks.run(environmentId, sessionId).then((answer) => {
             const error = !answer.ok ? answer.error : answer.result.receipt.status === "rejected" ? answer.result.receipt.error : undefined;
-            say(error === undefined ? "Check running on the Environment." : `${error.data?.["reason"] ?? error.code}: ${error.message}`);
+            say(error === undefined ? checkWords.running : `${error.data?.["reason"] ?? error.code}: ${error.message}`);
           });
         } else {
-          void runtime.checks.set(environmentId, sessionId, command.action === "set" ? command.command : null).then((answer) => say(!answer.ok ? answer.error.message : answer.result.receipt.status === "rejected" ? answer.result.receipt.error.message : command.action === "off" ? "Check is off." : "Check saved for this Workspace."));
+          void runtime.checks.set(environmentId, sessionId, command.action === "set" ? command.command : null).then((answer) => say(!answer.ok ? answer.error.message : answer.result.receipt.status === "rejected" ? answer.result.receipt.error.message : command.action === "off" ? `${checkWords.off}.` : checkWords.saved));
         }
         return true;
       }
@@ -1814,7 +1819,7 @@ export const App = (props: AppProps) => {
   const cardLines: TranscriptLine[] =
     card.kind === "lines"
       ? card.which === "run-info"
-        ? runInfoLines(projection, runInfoAccounts?.read().value, mainWidth)
+        ? runInfoLines(projection, runInfoAccounts?.read().value, runInfoModels?.read().value, mainWidth)
         : card.which === "timeline"
           ? (projection ? turnsOf(projection) : []).map((turn) => ({ row: turn.runId, spans: [{ text: timelineLine(turn) }] }))
           : tasksLines(projection)
@@ -2742,6 +2747,11 @@ export const App = (props: AppProps) => {
               }
               hint={cardHint(shownPrompt.prompt.kind, promptState.line !== null)}
               absent={shownPrompt.prompt.kind === "permission" || shownPrompt.prompt.kind === "denylist" ? `${keys("permission.rule.edit")} ${keys("permission.scope.walk")}: rules are per session on the harness` : undefined}
+              repeat={
+                shownPrompt.prompt.kind === "denylist" && projection
+                  ? denylistRepeatWords(shownPrompt.prompt, projection.items.filter((item): item is PromptEntry => item.kind === "prompt"))
+                  : undefined
+              }
             />
           )}
           {card.kind === "none" && !opened && !railInPane && started && known.length === 0 && <PairingPrompt />}

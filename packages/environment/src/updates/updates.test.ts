@@ -104,6 +104,8 @@ describe("updates.status", () => {
       releaseSource: NO_RELEASE_SOURCE,
       newest: null,
       lastCheck: null,
+      lastReadAt: null,
+      readSinceStart: false,
       target: null,
       passedOver: null,
       pending: { state: "current" },

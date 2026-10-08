@@ -6,13 +6,13 @@ it("covers every registered Settings pane, all first-run steps and the verificat
   const names = await sceneFiles(new URL("../gallery/scenes", import.meta.url).pathname);
   // look.md §16: these are the states a baseline set must include, independent of discovery order.
   const required = [
-    "window-empty", "window-not-ready", "window-start-failed", "window-session", "header", "grid-two", "primitives", "window-scale-11", "window-scale-20",
+    "window-empty", "window-not-ready", "window-start-failed", "window-session", "header", "update-chip", "grid-two", "primitives", "window-scale-11", "window-scale-20",
     "session-conversation", "session-streaming", "session-tools", "session-find", "session-queue", "session-steering", "session-history",
-    "composer-idle", "composer-running", "composer-stopping", "composer-slash", "status-line", "context-usage", "run-picker", "run-picker-compact",
+    "composer-idle", "composer-running", "composer-stopping", "composer-slash", "composer-bypass", "status-line", "context-usage", "run-picker", "run-picker-compact",
     "dock-files", "dock-file-view", "dock-files-empty", "dock-files-loading", "dock-files-error", "dock-diff", "dock-terminal", "dock-browser", "dock-browser-loading", "dock-documents", "dock-tasks", "dock-preview", "dock-sheet",
     "palette-root", "palette-sessions", "palette-no-match", "dialogs", "dialog-hand-off", "dialog-run-info", "dialog-pairing", "dialog-restore", "dialog-sign-in", "notices",
     "settings-setup", "settings-accounts", "settings-default-model", "settings-usage", "settings-banks", "settings-skills", "settings-instructions", "settings-permissions", "settings-browser", "settings-key-managers", "settings-forges", "settings-routines", "settings-bots", "settings-machines", "settings-access", "settings-service", "settings-theme", "settings-shortcuts", "settings-about", "settings-read-only", "settings-unreachable", "settings-search", "settings-notice-single", "settings-notices-stacked", "settings-notices-text-20",
-    "setup-introduction", "setup-introduction-failed", "setup-introduction-ready", "setup-account", "setup-carry-over", "setup-your-machines", "setup-forges", "setup-key-manager", "setup-memory-bank", "setup-skills-long", "setup-instructions", "setup-browser", "setup-permissions", "setup-appearance", "setup-close-confirmation",
+    "setup-introduction", "setup-introduction-failed", "setup-introduction-ready", "setup-account", "setup-carry-over", "setup-your-machines", "setup-forges", "setup-key-manager", "setup-memory-bank", "setup-skills-long", "setup-instructions", "setup-browser", "setup-permissions", "setup-appearance", "setup-close-confirmation", "setup-parts",
   ];
   for (const kind of ["permission", "question", "plan", "denylist"]) {
     for (const state of ["pending", "busy", "error", "settled"]) required.push(`prompt-${kind}${state === "pending" ? "" : `-${state}`}`);
