@@ -19,7 +19,8 @@ import { REGISTERED_STEP_IDS, STEP_ORDER, StepId } from "./steps.js";
  * Reload, Set up this machine, Restore, Move, and the verbs the step
  * decisions named beside them (the Set up specification, "Actions"): Start
  * the service (ADR 0025), Import again (ADR 0021), and Try again, Write it
- * myself, Start over and Revise for an authoring session (ADR 0019). A
+ * myself, Start over and Revise for an authoring session (ADR 0019), and
+ * How to set it up for the host-side updater a container needs (#1883). A
  * step's state checks select their subset (`steps.ts`); a new verb is a
  * contracts change.
  */
@@ -41,6 +42,8 @@ export const SETUP_ACTIONS = [
   "write-it-myself",
   "start-over",
   "revise",
+  "check-certificate",
+  "how-to-set-up",
 ] as const;
 
 /** What a client does for each action (the Set up specification, "Actions"), the items it applies to being the result's targets that name it. */
@@ -63,6 +66,8 @@ const SETUP_ACTION_MEANINGS: { readonly [Action in (typeof SETUP_ACTIONS)[number
   "write-it-myself": "opens the step's artefact to write by hand: the bank's checkout, or the Instructions editor",
   "start-over": "starts a new authoring session for the step, the old one staying",
   revise: "starts an authoring session that revises the step's artefact",
+  "check-certificate": "opens the certificate check of each key-manager connection it targets, where a person reviews the certificate it presents and trusts it",
+  "how-to-set-up": "shows how to set up what the step needs outside the environment: on Your machines, the host-side updater on the Docker host",
 };
 
 export const SetupAction = z.enum(SETUP_ACTIONS).meta({
@@ -190,6 +195,9 @@ const ReasonTime = z
   .meta({ description: "A past time the reason names: the words that say it and the instant, which a client words where it is, its age and its clock time, in place of those words." });
 export type ReasonTime = z.infer<typeof ReasonTime>;
 
+/** How many lines of details a result carries at most (setup-copy.md §3, "Details and Copy details"). */
+export const STEP_RESULT_DETAILS_MAX = 20;
+
 export const RegisteredStepId = z.enum(REGISTERED_STEP_IDS).meta({ description: `A step with an entry in the step registry: ${REGISTERED_STEP_IDS.join(", ")}.` });
 export type RegisteredStepId = z.infer<typeof RegisteredStepId>;
 
@@ -211,7 +219,8 @@ const GivenResult = z.object({
   }),
   state: StepState,
   reason: z.string().min(1).meta({
-    description: "One line for the step's row: what needs attention, naming each check that failed; when the step is done, what its checks found to hold.",
+    description:
+      "One plain line for the step's row: what needs attention, each check that failed in its own sentence; when the step is done, what its checks found to hold. It holds no check id, settings key, error code or exact time: those are in failing and details.",
   }),
   failing: z.array(z.string().min(1)).meta({
     description:
@@ -219,7 +228,7 @@ const GivenResult = z.object({
   }),
   actions: z.array(OfferedAction).meta({
     description:
-      "The actions to offer beside the reason: those of the checks that failed, each once, after try-again, write-it-myself and start-over when an LLM step's latest minted session last ended with an error or was stopped, or check-again alone on a result that timed out; revise alone on a done LLM step; empty when pending, skipped or done otherwise. The reader leaves out a verb it does not know, and one whose every target it leaves out.",
+      "The actions to offer beside the reason: those of the checks that failed, each once (check-again for a check that could not finish, and only those a failure offers of the ones its check declares), after try-again, write-it-myself and start-over when an LLM step's latest minted session last ended with an error or was stopped, or check-again alone on a result that timed out; revise alone on a done LLM step; empty when pending, skipped or done otherwise. The reader leaves out a verb it does not know, and one whose every target it leaves out.",
   }),
   targets: z
     .array(OfferedTarget)
@@ -234,6 +243,13 @@ const GivenResult = z.object({
     .meta({
       description:
         "The past times the reason names, each with the words that say it, which a client replaces with its own words for that time; absent when it names none. A client that reads none shows the reason as it is.",
+    }),
+  details: z
+    .array(z.string().min(1).regex(/^[^\r\n]*$/))
+    .max(STEP_RESULT_DETAILS_MAX)
+    .optional()
+    .meta({
+      description: `The raw facts behind the reason, which a client shows under Details and copies with Copy details, never in the line itself (setup-copy.md §3): check ids with the errors they threw, settings keys, addresses, versions and exact times, each one line, at most ${STEP_RESULT_DETAILS_MAX}; absent when there are none. A reader built before details passes over them and shows the reason as it is.`,
     }),
   checkedAt: Timestamp.meta({ description: "When the check ran, on the environment's clock." }),
   lastGood: LastGood.optional(),
@@ -258,7 +274,7 @@ const readable = ({ targets: given, ...result }: z.output<typeof GivenResult>) =
 /** One step's check, as `setup.check` answers it and this build reads it. */
 export const StepResult = GivenResult.transform(readable).meta({
   description:
-    "A step's health check: its state, one line naming what failed, the checks that failed, the actions to offer and the items they apply to, when it ran and, when it timed out or could not check, the last good result beneath it (ADR 0031). A verb or a kind of item the reader does not know is a newer environment's: the reader leaves out that action or target, and an action whose every target it leaves out, and reads the rest.",
+    "A step's health check: its state, one plain line saying what failed, the raw facts behind it as details, the checks that failed, the actions to offer and the items they apply to, when it ran and, when it timed out or could not check, the last good result beneath it (ADR 0031). A verb or a kind of item the reader does not know is a newer environment's: the reader leaves out that action or target, and an action whose every target it leaves out, and reads the rest.",
 });
 export type StepResult = z.infer<typeof StepResult>;
 

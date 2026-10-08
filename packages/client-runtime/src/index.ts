@@ -249,9 +249,11 @@ export {
 export {
   RESTORE_METHODS,
   SETUP_ACTION_WORDS,
+  outcomeWords,
   planSetupAction,
   pullSetupSources,
   restoreStep,
+  restoredOutcome,
   setupActions,
   updateEnvironment,
   type ActingStep,
@@ -265,17 +267,19 @@ export {
 } from "./setup/actions.js";
 export {
   STEP_STATE_WORDS,
-  checkedAgoWords,
   countsWords,
   homedChecks,
   isRegisteredStep,
   lastGoodWords,
+  needsWord,
   rowHealth,
   setupReachWords,
   stepLine,
+  stepNote,
   worstState,
 } from "./setup/checklist.js";
 export { installLines, type InstallLines, type InstallTarget } from "./setup/install-lines.js";
+export { plainRefusal, type PlainRefusal, type RefusedAnswer } from "./words/refusal.js";
 export {
   COMMAND_EXPIRY_MS,
   STOP_WAIT_MS,
@@ -513,7 +517,7 @@ export {
 export { xtermFull, xtermScreen, xtermText, type TextScreen, type TextScreens, type Xterm } from "./terminals/text-screen.js";
 export { TERMINAL_WRITE_CAP, nextWrite } from "./terminals/writes.js";
 export { buttonRows, choiceRows, joinAnswers, noteOf, rowAnswer, ttlWords, type ChoiceRow, type RowOutcome } from "./prompts/card.js";
-export { denylistMatchWords, denylistRepeatWords, type AskedPrompt, type DenylistMatchWords } from "./prompts/denylist.js";
+export { denylistCardWords, denylistMatchWords, denylistRepeatWords, type AskedPrompt, type DenylistCardEntry, type DenylistCardWords, type DenylistMatchWords } from "./prompts/denylist.js";
 export { answerPrompt, type AnswerOutcome, type PromptTarget } from "./prompts/answer.js";
 export { BULK_LEAST, askDetail, bulkAsks, bulkQuestion, decidable, inBulk } from "./prompts/asks.js";
 export {
@@ -549,9 +553,11 @@ export {
   nextRunWords,
   percent,
   pressureOf,
+  listedReadingsOf,
   readingWords,
   readingsOf,
   meterReadingsOf,
+  silentLimitsWords,
   spendOf,
   startingAccount,
   windowLabel,
@@ -688,6 +694,7 @@ export {
   updatesUnreadWords,
   type WaitingUpdate,
 } from "./updates/words.js";
+export { HOST_UPDATER_SETUP, type HostUpdaterSetup } from "./updates/host-updater-setup.js";
 export { drainEnvironment, rebuildProjections, type ServiceOutcome } from "./service/actions.js";
 export {
   INSTALL_METHOD_WORDS,

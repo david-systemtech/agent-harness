@@ -7,6 +7,7 @@ import {
   runTool,
   setupActions,
   stepLine,
+  stepNote,
   updateEnvironment,
   uuidv7,
   type ActionOutcome,
@@ -21,12 +22,14 @@ import { SignInCard } from "../accounts/sign-in-card.js";
 import { useLocalService } from "../connections/local-service.js";
 import { nameOf } from "../connections/words.js";
 import { ToolTerminal, type ShownRun } from "../managed-tools/tool-terminal.js";
+import { HostUpdaterSetup } from "../machines/host-updater-setup.js";
 import { CopyLine } from "../settings/copy-line.js";
 import { useSettings } from "../settings/settings-window.js";
 import { Button, Tooltip } from "../ui/index.js";
 import { useClock, useObservable, useRuntime } from "../window-context.js";
 import type { StepCardProps } from "./cards.js";
 import { useChecklist } from "./checklist-window.js";
+import { Outcome } from "./outcome.js";
 
 /** A step's restore, as its named action plans it. */
 export type RestorePlan = Extract<SetupActionPlan, { readonly kind: "restore" }>;
@@ -38,6 +41,9 @@ export type RestorePlan = Extract<SetupActionPlan, { readonly kind: "restore" }>
  */
 export type CardRestore = (plan: RestorePlan) => Promise<ActionOutcome | null>;
 
+/** What the card last said a command did: its line, and its raw words for Details. */
+type Said = Pick<ActionOutcome, "line" | "details">;
+
 /**
  * Carries out a named action on the environment checked (`planSetupAction`):
  * `setup.check`, the step's restore (the card's, else the client runtime's
@@ -45,11 +51,12 @@ export type CardRestore = (plan: RestorePlan) => Promise<ActionOutcome | null>;
  * checklist switched to another environment, an account's sign-in (through
  * `signIn`), the environment's update, or a row of Settings, which leaves the
  * full checklist; a named tool's Install or Update opens its tool terminal
- * on the card, and Pull now reports every named source's sync (#733).
+ * on the card, Pull now reports every named source's sync (#733), and How
+ * to set it up on Your machines shows the host updater's setup (#1883).
  * A verb that is a step card's, on a card that has none, opens the step's
  * home row. What a command did is said through `say`.
  */
-const useSetupActions = (environmentId: string, say: (line: string | undefined) => void, signIn: (account: NamedItem) => void, restore: CardRestore | undefined, started: (run: ShownRun) => void, refused: (command: string | null) => void) => {
+const useSetupActions = (environmentId: string, say: (said: Said | undefined) => void, signIn: (account: NamedItem) => void, restore: CardRestore | undefined, started: (run: ShownRun) => void, refused: (command: string | null) => void, showHostUpdater: () => void) => {
   const runtime = useRuntime();
   const clock = useClock();
   const service = useLocalService();
@@ -63,7 +70,7 @@ const useSetupActions = (environmentId: string, say: (line: string | undefined) 
       case "restore": {
         const restored = restore === undefined ? await restoreStep(runtime, environmentId, plan.step, uuidv7(clock.now()), plan.sections) : await restore(plan);
         if (restored === null) return;
-        say(restored.line);
+        say(restored);
         if (restored.ok) void runtime.setup.check(environmentId, plan.step);
         return;
       }
@@ -74,20 +81,22 @@ const useSetupActions = (environmentId: string, say: (line: string | undefined) 
       case "sign-in":
         return signIn(plan.account);
       case "update":
-        return say((await updateEnvironment(runtime, environmentId, environment === undefined ? "the environment" : nameOf(environment), uuidv7(clock.now()))).line);
+        return say(await updateEnvironment(runtime, environmentId, environment === undefined ? "the environment" : nameOf(environment), uuidv7(clock.now())));
       case "pull-sources":
         say(undefined);
-        return say((await pullSetupSources(runtime, environmentId, plan.sources, () => clock.now())).line);
+        return say(await pullSetupSources(runtime, environmentId, plan.sources, () => clock.now()));
       case "run-tool": {
         say(undefined);
         refused(null);
         const outcome = await runTool(runtime, environmentId, plan.tool, plan.action, clock.now());
         if (outcome.ok) return started(outcome.run);
         refused(outcome.command);
-        return say(outcome.line);
+        return say(outcome);
       }
       case "managed-tools":
         return leave("about.about", environmentId, "managed-tools");
+      case "host-updater-setup":
+        return showHostUpdater();
       case "card":
         return leave(plan.home, environmentId);
       case "row":
@@ -123,13 +132,14 @@ interface StepStatusProps extends StepCardProps {
 export const StepStatus = ({ environmentId, step, restore, actions, cardAction, handledActions = [], toolStarted }: StepStatusProps) => {
   const runtime = useRuntime();
   const { leave } = useChecklist();
-  const [line, say] = useState<string | undefined>(undefined);
+  const [said, say] = useState<Said | undefined>(undefined);
   const [signingIn, signIn] = useState<NamedItem | null>(null);
   const [drawn, started] = useState<ShownRun | null>(null);
   const [refusedCommand, refused] = useState<string | null>(null);
+  const [hostUpdater, showHostUpdater] = useState(false);
   const [sending, setSending] = useState(false);
   const inFlight = useRef(false);
-  const act = useSetupActions(environmentId, say, signIn, restore, toolStarted ?? started, refused);
+  const act = useSetupActions(environmentId, say, signIn, restore, toolStarted ?? started, refused, () => showHostUpdater(true));
   const run = async (plan: SetupActionPlan) => {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -153,9 +163,12 @@ export const StepStatus = ({ environmentId, step, restore, actions, cardAction, 
     return capability?.status === "absent" ? [capability.message] : [];
   }))];
   const now = runtime.environmentNow(environmentId);
+  const environment = useObservable(runtime.projections.environments).find((view) => view.environmentId === environmentId);
+  const note = stepNote(step, now, environment === undefined ? "this computer" : nameOf(environment));
   return (
     <>
       <p className="text-sm text-ink">{stepLine(step, now)}</p>
+      {note !== undefined && <p className="text-xs text-ink-muted">{note}</p>}
       {result?.lastGood !== undefined && <p className="text-sm text-ink-muted">{lastGoodWords(result.lastGood, now)}</p>}
       <div className="flex flex-wrap gap-2">
         {offered.map((action) => (
@@ -178,10 +191,11 @@ export const StepStatus = ({ environmentId, step, restore, actions, cardAction, 
         <Tooltip content={`Open ${settingsRow(step.home).label}`} keys="Tab, Enter"><Button variant="outline" onClick={() => leave(step.home, environmentId)}><ExternalLink aria-hidden="true" />Open {settingsRow(step.home).label}</Button></Tooltip>
       </div>
       {reasons.map((reason) => <p key={reason} className="text-sm text-ink-faint">{reason}</p>)}
-      {line !== undefined && <p className="text-sm text-ink-muted">{line}</p>}
+      {said !== undefined && <Outcome outcome={said} className="text-sm text-ink-muted" />}
       {refusedCommand !== null && <CopyLine label="The vendor's command, to run yourself" text={refusedCommand} />}
+      {hostUpdater && offered.some(({ plan }) => plan.kind === "host-updater-setup") && <HostUpdaterSetup close={() => showHostUpdater(false)} />}
       {drawn !== null && <ToolTerminal key={drawn.terminal.id} environmentId={environmentId} run={drawn} label={managedTool(drawn.tool).label} close={() => started(null)} />}
-      {signingIn !== null && <SignInCard environmentId={environmentId} account={signingIn} close={() => signIn(null)} say={say} />}
+      {signingIn !== null && <SignInCard environmentId={environmentId} account={signingIn} close={() => signIn(null)} say={(line) => say({ line })} />}
     </>
   );
 };

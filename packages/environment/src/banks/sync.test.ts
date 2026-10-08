@@ -14,6 +14,7 @@ import { create, workspace } from "../../test/sessions.js";
 import { fakeAdapter } from "../../test/fake-adapter.js";
 import { autoMemoryName } from "../workspace/auto-memory.js";
 import type { ForgeGitRequest } from "../forge/harness-git.js";
+import { forgeAccountMissing } from "../forge/missing-origins.js";
 import type { EventEnvelope } from "../event-log/event-log.js";
 import { composeInstructions } from "../instructions/composer.js";
 import { git } from "../../test/workspaces.js";
@@ -150,7 +151,8 @@ describe("banks.sync", () => {
     const health = await client.request("setup.check", { step: "memory-bank" });
     expect(health.results).toEqual(expect.arrayContaining([expect.objectContaining({
       failing: expect.arrayContaining(["memory-bank.reachable"]),
-      reason: expect.stringMatching(/commit or stash/i),
+      reason: expect.stringContaining(`agent-harness cannot reach ${bank.name}. Choose Check again.`),
+      details: expect.arrayContaining([expect.stringMatching(/commit or stash/i)]),
     })]));
 
     git(checkout, "checkout", "--", "BANK.md");
@@ -413,6 +415,22 @@ describe("banks.sync", () => {
     t.clock.jump(1_000);
     expect((await pull(client, bank))?.status).toEqual(after?.status);
     expect(events(t, failedAt)).toEqual([]);
+  });
+});
+
+describe("a fetch the forge asked a credential for", () => {
+  it("records the plain line that a forge is needed, the origin and the cause after it (#1850)", async () => {
+    let refuse = false;
+    const { t, client, bank } = await start({ banksGit: async (request, git) => {
+      if (!refuse) return git(request);
+      const { origin } = new URL(request.repository);
+      return { outcome: "refused", error: forgeAccountMissing(origin, "it asked for a credential") };
+    } });
+    await pull(client, bank);
+    refuse = true;
+    t.clock.jump(1_000);
+    const after = await pull(client, bank);
+    expect(after?.status.reachable).toMatchObject({ state: "unreachable", reason: expect.stringMatching(/^agent-harness needed a forge for [^ ]+ and found none\. Add [^ ]+\. \([a-z]+:\/\/[^ ]+: it asked for a credential\)$/) });
   });
 });
 

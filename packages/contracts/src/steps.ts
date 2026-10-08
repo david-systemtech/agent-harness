@@ -59,19 +59,19 @@ export const STEP_LABELS: { readonly [Id in (typeof STEP_ORDER)[number]]: string
   appearance: "Appearance",
 };
 
-/** The outcome each checklist step explains to the person setting up (docs/specs/look.md §13.2). */
+/** The outcome each checklist step explains to the person setting up (docs/specs/look.md §13.2), in setup-copy.md §4.4's words. */
 export const STEP_HINTS: { readonly [Id in (typeof STEP_ORDER)[number]]: string } = {
-  account: "Choose your agent’s account",
-  "carry-over": "Bring past work with you",
-  "your-machines": "Work here or elsewhere",
-  forges: "Open pull requests",
-  "key-manager": "Fetch keys when needed",
-  "memory-bank": "Keep a shared notebook",
-  skills: "Reuse working procedures",
-  instructions: "Guide every session",
-  browser: "See and use web pages",
-  permissions: "Choose when agents ask",
-  appearance: "Make the window feel right",
+  account: "Sign in to Claude",
+  "carry-over": "Bring your past chats",
+  "your-machines": "Use it from other devices",
+  forges: "Connect GitHub and others",
+  "key-manager": "Use your key manager",
+  "memory-bank": "A notebook agents keep",
+  skills: "Ready-made agent skills",
+  instructions: "Notes every agent reads",
+  browser: "Let agents use Chrome",
+  permissions: "When agents must ask",
+  appearance: "Light, dark and colours",
 };
 
 export const StepId = z.enum(STEP_ORDER).meta({
@@ -79,12 +79,18 @@ export const StepId = z.enum(STEP_ORDER).meta({
 });
 export type StepId = z.infer<typeof StepId>;
 
+/** What a value check says of a value the step cannot use: the plain line, and the raw facts behind it for Details (setup-copy.md §3). */
+export interface ValueProblem {
+  readonly reason: string;
+  readonly details: readonly string[];
+}
+
 /**
  * A health check of one setting: `true` when the value the environment
  * holds lets the step count as done, else what needs attention, for the
  * step's card to show.
  */
-export type HealthCheck = (value: unknown) => true | string;
+export type HealthCheck = (value: unknown) => true | ValueProblem;
 
 /** A link from a step to a row of Settings beside its home: the Account step's to `accounts.default-model`, where its keys sit. */
 export interface RowLink {
@@ -192,7 +198,9 @@ export interface Step {
    * The step's line when every check holds, as one short sentence of what
    * was found, unless the environment says more of what it found (#1698):
    * never its state checks' conditions joined, whose alternatives say what
-   * would pass rather than what is there.
+   * would pass rather than what is there. Its words are the step's done line
+   * in setup-copy.md §5, without the values the environment fills in when it
+   * says more.
    */
   readonly done: string;
   /** The rows beside its home the step links to (every row its keys sit on is its home or one of these), and the other steps. */
@@ -227,11 +235,18 @@ export interface Step {
   readonly llm?: string;
 }
 
-/** A check that passes on any value the key's schema accepts: what a setting with no stronger notion of done asks. */
+/**
+ * A check that passes on any value the key's schema accepts: what a setting
+ * with no stronger notion of done asks. A value it refuses is named by the
+ * setting's label, the key in details (setup-copy.md §3).
+ */
 export const anyValidValue =
   (key: SettingsKey): HealthCheck =>
   (value) =>
-    SETTINGS[key].schema.safeParse(value).success || `${key} does not hold a valid value.`;
+    SETTINGS[key].schema.safeParse(value).success || {
+      reason: `A saved setting for this step cannot be used: ${SETTINGS[key].label}. Set it again in Settings.`,
+      details: [key],
+    };
 
 /**
  * Every step registered so far, in the milestone-1 order: Account, for the
@@ -273,9 +288,10 @@ export const STEP_REGISTRY = [
     ],
     stateChecks: [
       { id: "account.present", holds: "At least one account is on this environment.", actions: [] },
-      { id: "account.signed-in", holds: "Every account on this environment is signed in.", actions: ["sign-in-again"] },
+      // Check again for an account whose status could not be read, Sign in again for one signed out or expired.
+      { id: "account.signed-in", holds: "Every account on this environment is signed in.", actions: ["sign-in-again", "check-again"] },
     ],
-    done: "Every account is signed in.",
+    done: "All your accounts are signed in.",
     links: [{ row: "accounts.default-model" }],
     skippable: false,
     budget: "local",
@@ -316,13 +332,14 @@ export const STEP_REGISTRY = [
       },
       { id: "carry-over.default-account", holds: "No imported default Account is waiting for sign-in.", actions: ["sign-in-again"] },
     ],
-    done: "Nothing is waiting to be brought over.",
+    done: "Everything is already here.",
     links: [{ row: "knowledge.skills" }, { row: "knowledge.banks" }],
     skippable: true,
     skip: "carry-over.present",
     budget: "local",
     cadence: { minutes: 60 },
-    triggers: ["account.updated", "carry-over.imported", "state-import.finished", "settings.changed"],
+    // Every forge.account.* event too: adding a forge account can fix what it found missing elsewhere (#1860).
+    triggers: ["account.updated", "carry-over.imported", "state-import.finished", "settings.changed", "forge.account.*"],
   },
   {
     // The Your machines step (ADR 0025), at home on the Environments band's Your machines row (ADR 0027:
@@ -387,13 +404,14 @@ export const STEP_REGISTRY = [
       {
         id: "your-machines.host-updater",
         holds: "No host-side updater manages this environment's updates, or it polled in the last hour.",
-        actions: ["check-again"],
+        // How to set it up only before its first poll: once it has polled, it is set up (setup-copy.md §5.4; #1883).
+        actions: ["how-to-set-up", "check-again"],
       },
       { id: "your-machines.named", holds: "The environment has a name, an icon and a colour.", actions: [] },
       { id: "your-machines.ready", holds: "The environment is ready, and not draining past its cap.", actions: ["check-again"] },
       { id: "your-machines.lan", holds: "LAN binding is off, or the LAN address it names is one this machine holds.", actions: ["check-again"] },
     ],
-    done: "This machine is ready.",
+    done: "This computer is ready.",
     links: [{ row: "environments.service" }],
     skippable: false,
     budget: "network",
@@ -405,8 +423,9 @@ export const STEP_REGISTRY = [
     // Forges row (ADR 0027), linking the Key manager step, whose Move card takes stored tokens (ADR 0028). It writes no
     // settings key: its forge accounts go through the four forge account commands. Skippable: with no forge account it
     // answers skipped, the first step that does (ADR 0020). Its checks read every forge account's last verification, or
-    // await one when it is older than the cadence (a network call; #680); every forge.account.* event re-runs it, and
-    // tools.updated, since forges.gh reads gh's Managed tools row (#677).
+    // await one when it is older than the cadence (a network call; #680); every forge.account.* event re-runs it,
+    // tools.updated, since forges.gh reads gh's Managed tools row (#677), and every key-manager.* event, since a forge
+    // account's token can come from a key manager, so signing in to one can fix it (#1860).
     id: "forges",
     home: "access.forges",
     writes: [],
@@ -433,7 +452,7 @@ export const STEP_REGISTRY = [
       { id: "forges.expiry", holds: "No forge account's token expires within thirty days.", actions: ["sign-in-again"] },
       { id: "forges.coverage", holds: "No origin a harness operation was refused on for want of a forge account counts as missing.", actions: [] },
     ],
-    done: "Every forge account is signed in and answering.",
+    done: "Your forges are connected.",
     links: [{ step: "key-manager" }],
     skippable: true,
     skip: "forges.present",
@@ -442,7 +461,7 @@ export const STEP_REGISTRY = [
       minutes: 15,
       reason: "The orientation block reports each forge account's status (ADR 0012), so the step is checked as often as a forge account is verified.",
     },
-    triggers: ["forge.account.*", "tools.updated"],
+    triggers: ["forge.account.*", "tools.updated", "key-manager.*"],
   },
   {
     // The Key manager step (key-managers spec, "The Key manager step"; ADR 0028, ADR 0034; #367), fifth, before Memory
@@ -472,10 +491,11 @@ export const STEP_REGISTRY = [
     ],
     stateChecks: [
       { id: "key-manager.present", holds: "At least one key-manager connection is on this environment.", actions: [] },
-      // None awaiting its sign-in, its credential rejected, or its token expired (#383).
-      { id: "key-manager.signed-in", holds: "Every key-manager connection is signed in.", actions: ["sign-in-again"] },
-      // None unreachable, sealed, or with a rejected certificate.
-      { id: "key-manager.reachable", holds: "Every key-manager connection is reachable, unsealed, and presents a certificate that verifies.", actions: ["check-again"] },
+      // None awaiting its sign-in, its credential rejected, or its token expired (#383), each signed in again; none still
+      // signing in or whose provider cannot load here, each checked again (#1852).
+      { id: "key-manager.signed-in", holds: "Every key-manager connection is signed in.", actions: ["sign-in-again", "check-again"] },
+      // None unreachable or sealed, each checked again, or with a rejected certificate, whose certificate is checked (#1852).
+      { id: "key-manager.reachable", holds: "Every key-manager connection is reachable, unsealed, and presents a certificate that verifies.", actions: ["check-again", "check-certificate"] },
       { id: "key-manager.run-tokens", holds: "Every injecting OpenBao connection's login can mint run tokens.", actions: ["check-again"] },
       // ADR 0026's Managed tools rows: a key-manager CLI is required while its connection injects.
       {
@@ -484,7 +504,7 @@ export const STEP_REGISTRY = [
         actions: ["install", "update"],
       },
     ],
-    done: "Every key-manager connection is signed in and reachable.",
+    done: "Your key managers are connected.",
     links: [{ step: "forges" }, { step: "memory-bank" }, { row: "about.about" }],
     skippable: true,
     skip: "key-manager.present",
@@ -503,7 +523,9 @@ export const STEP_REGISTRY = [
     // banks spec's methods, which the banks build registers (#937). Skippable: with no registered bank it answers skipped.
     // Its checks await a verification of every bank, a git probe, and answer from what the records' status says; every
     // bank.* notice re-runs it, and so does every run end of its minted describe session (ADR 0019), whose prompt it
-    // names.
+    // names; and every forge account event that can fix a bank's access, since a bank's repository is reached through a
+    // forge account (#1860): not forge.account.git-rejected, which an agent's git can record a second, each a git probe,
+    // nor forge.account.capability-learned, which a bank check's own forge reads can record, so it would re-trigger itself.
     id: "memory-bank",
     home: "knowledge.banks",
     writes: [],
@@ -527,18 +549,19 @@ export const STEP_REGISTRY = [
       { id: "memory-bank.owners", holds: "Each enabled team bank's owners resolve on its forge.", actions: [] },
       { id: "memory-bank.landing", holds: "No landing on an enabled bank has failed.", actions: ["check-again"] },
     ],
-    done: "Every bank is reachable.",
+    done: "Your notebook is ready.",
     links: [{ step: "key-manager" }, { step: "forges" }],
     skippable: true,
     skip: "memory-bank.present",
     budget: "git",
     cadence: { minutes: 60 },
-    triggers: ["bank.*"],
+    triggers: ["bank.*", "forge.account.added", "forge.account.updated", "forge.account.verified", "forge.account.primary-set", "forge.account.removed"],
     llm: "describe-bank",
   },
   {
     // Skills (ADR 0029; #514): local health from the sources' last attempts and the own directory.
-    // Its cards belong to the Set up workstream; skills.updated re-runs its local check (#588).
+    // Its cards belong to the Set up workstream; skills.updated re-runs its local check (#588), and every
+    // forge.account.* event, since a source on a forge is pulled with a forge account's credential (#1860).
     id: "skills",
     home: "knowledge.skills",
     writes: [],
@@ -559,13 +582,13 @@ export const STEP_REGISTRY = [
       { id: "skills.source-limit", holds: "At most twenty skill sources are tracked.", actions: [] },
       { id: "skills.own-directory", holds: "The own skills directory is readable.", actions: [] },
     ],
-    done: "Every skill source is in sync.",
+    done: "Your skills are up to date.",
     links: [],
     skippable: true,
     skip: "skills.present",
     budget: "local",
     cadence: { minutes: 60 },
-    triggers: ["skills.updated"],
+    triggers: ["skills.updated", "forge.account.*"],
   },
   {
     // The Instructions step (skills spec, "Set up"; ADR 0030; #505), at home on the Knowledge band's Instructions row
@@ -589,7 +612,7 @@ export const STEP_REGISTRY = [
     ],
     checks: [{ key: "instructions.orientation", check: anyValidValue("instructions.orientation") }],
     stateChecks: [{ id: "instructions.orientation-renders", holds: "The orientation block renders with no failed registry read.", actions: [] }],
-    done: "The orientation block renders.",
+    done: "Agents get your notes and a summary of this computer.",
     links: [],
     skippable: false,
     budget: "local",
@@ -635,7 +658,7 @@ export const STEP_REGISTRY = [
       { id: "browser.chrome-connected", holds: "A paired Chrome is connected.", actions: ["check-again", "unpair", "pair-another"] },
       { id: "browser.extension-current", holds: "Every paired Chrome last reported the shipped extension version.", actions: ["reload", "check-again"] },
     ],
-    done: "Chrome is paired, connected and current.",
+    done: "Chrome is connected.",
     links: [],
     skippable: true,
     skip: "browser.present",
@@ -680,7 +703,7 @@ export const STEP_REGISTRY = [
       { id: "permissions.denylist", holds: "Each denylist section holds its presets, or was emptied on purpose.", actions: ["restore"] },
       { id: "permissions.not-root", holds: "The environment runs as a non-root user.", actions: [] },
     ],
-    done: "Containment and the denylist are set.",
+    done: "Set.",
     links: [{ step: "your-machines" }],
     skippable: false,
     budget: "local",
@@ -704,7 +727,7 @@ export const STEP_REGISTRY = [
         actions: ["restore"],
       },
     ],
-    done: "The theme meets the contrast rules.",
+    done: "Your theme is easy to read.",
     links: [],
     skippable: false,
     budget: "local",

@@ -120,6 +120,19 @@ it("fails a run that must wrap whole when it breaks inside, even at a hyphen, an
   expect(measureSceneGeometry()).toEqual([]);
 });
 
+it("fails a row of a list that grows taller than the first row, so rows with long and short text keep one shape (ticket 1895)", () => {
+  const root = document.createElement("div");
+  root.id = "root";
+  root.dataset["galleryGeometry"] = JSON.stringify([{ selector: "li", sameHeight: true }]);
+  root.innerHTML = "<ul><li>first</li><li>second</li><li>third</li></ul>";
+  document.body.append(root);
+  const heights = [54, 54, 72];
+  root.querySelectorAll("li").forEach((row, index) => vi.spyOn(row, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 0, 200, heights[index]!)));
+  expect(measureSceneGeometry()).toEqual(["li[2].height: got 72, expected 54 like li[0] ±0.5"]);
+  heights[2] = 54.3;
+  expect(measureSceneGeometry()).toEqual([]);
+});
+
 
 it("serves the built gallery at the same origin on every run, so a scene that shows the page's origin captures the same pixels (ticket 1763)", async () => {
   const directory = await mkdtemp(join(tmpdir(), "gallery-dist-"));
@@ -140,10 +153,11 @@ it("serves the built gallery at the same origin on every run, so a scene that sh
 });
 
 it("captures every scene in dark and the specified light subset without exceeding the report budget", () => {
-  expect(captureCases(["settings-accounts", "settings-permissions", "settings-theme", "setup-account", "setup-appearance", "settings-banks", "dock-files"])).toEqual([
+  expect(captureCases(["settings-accounts", "settings-permissions", "settings-theme", "settings-usage", "setup-account", "setup-appearance", "settings-banks", "dock-files"])).toEqual([
     { scene: "settings-accounts", ladder: "light", name: "settings-accounts.light" }, { scene: "settings-accounts", ladder: "dark", name: "settings-accounts.dark" },
     { scene: "settings-permissions", ladder: "light", name: "settings-permissions.light" }, { scene: "settings-permissions", ladder: "dark", name: "settings-permissions.dark" },
     { scene: "settings-theme", ladder: "light", name: "settings-theme.light" }, { scene: "settings-theme", ladder: "dark", name: "settings-theme.dark" },
+    { scene: "settings-usage", ladder: "light", name: "settings-usage.light" }, { scene: "settings-usage", ladder: "dark", name: "settings-usage.dark" },
     { scene: "setup-account", ladder: "light", name: "setup-account.light" }, { scene: "setup-account", ladder: "dark", name: "setup-account.dark" },
     { scene: "setup-appearance", ladder: "light", name: "setup-appearance.light" }, { scene: "setup-appearance", ladder: "dark", name: "setup-appearance.dark" },
     { scene: "settings-banks", ladder: "dark", name: "settings-banks.dark" }, { scene: "dock-files", ladder: "dark", name: "dock-files.dark" },

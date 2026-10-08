@@ -151,7 +151,7 @@ describe("setup.mint", () => {
     const { results } = await client.request("setup.check", { step: "instructions" });
     expect(results[0]).toMatchObject({
       state: "needs-attention",
-      reason: "The session's run failed: The provider is overloaded. NOTE.md is missing from the session's workspace.",
+      reason: "The describing conversation stopped. NOTE.md is missing from the session's workspace.",
       actions: ["try-again", "write-it-myself", "start-over"],
       targets: [
         { action: "try-again", kind: "session", id: failed, label: "Set up: Instructions (david-memory)" },
@@ -186,7 +186,7 @@ describe("setup.mint", () => {
     await runEnded(client, stopped);
     const both = (await client.request("setup.check", { step: "instructions" })).results[0];
     expect(both).toMatchObject({
-      reason: "The session's run was stopped. The session's run failed: The provider is overloaded. NOTE.md is missing from the session's workspace.",
+      reason: "The describing conversation stopped. NOTE.md is missing from the session's workspace.",
       actions: ["try-again", "write-it-myself", "start-over"],
       targets: [
         { action: "try-again", kind: "session", id: stopped },
@@ -200,7 +200,7 @@ describe("setup.mint", () => {
     await minted(client, { step: "instructions", subject: TEAM_BANK.id, variant: "first", account: "missing-account" });
     const afterDraft = (await client.request("setup.check", { step: "instructions" })).results[0];
     expect(afterDraft).toMatchObject({
-      reason: "The session's run failed: The provider is overloaded. NOTE.md is missing from the session's workspace.",
+      reason: "The describing conversation stopped. NOTE.md is missing from the session's workspace.",
       targets: [
         { action: "try-again", kind: "session", id: failed },
         { action: "write-it-myself", ...BANK },
@@ -310,10 +310,15 @@ describe("setup.mint", () => {
     const t = await start();
     const client = await t.client();
     const unknown = await mint(client, { step: "instructions", subject: "bank-9", variant: "first" });
-    expect(unknown.receipt).toMatchObject({ status: "rejected", error: { code: "not_found", data: { kind: "subject", step: "instructions", subject: "bank-9" } } });
+    expect(unknown.receipt).toMatchObject({ status: "rejected", error: {
+        code: "not_found",
+        message: "What this conversation was for is no longer here. Choose Check again.",
+        data: { kind: "subject", step: "instructions", subject: "bank-9" },
+      },
+    });
     for (const step of ["permissions", "appearance"] as const) {
       const plain = await mint(client, { step, variant: "first" });
-      expect(plain.receipt, step).toMatchObject({ status: "rejected", error: { code: "conflict", data: { reason: "no_llm_step", step } } });
+      expect(plain.receipt, step).toMatchObject({ status: "rejected", error: { code: "conflict", message: "This step has no conversation to start.", data: { reason: "no_llm_step", step } } });
     }
     expect((await client.request("sessions.list", {})).sessions).toEqual([]);
     expect(t.adapter.runs).toEqual([]);
@@ -382,7 +387,8 @@ describe("a minted session's run end", () => {
     expect(await noteResult(t, client)).toEqual({
       step: "instructions",
       state: "needs-attention",
-      reason: "The session's run failed: The provider is overloaded. NOTE.md is missing from the session's workspace.",
+      reason: "The describing conversation stopped. NOTE.md is missing from the session's workspace.",
+      details: ["The provider is overloaded."],
       failing: ["instructions.note"],
       actions: ["try-again", "write-it-myself", "start-over"],
       targets: [
@@ -412,7 +418,7 @@ describe("a minted session's run end", () => {
     await triggerWindowPasses(t);
     expect(await noteResult(t, client)).toMatchObject({
       state: "needs-attention",
-      reason: "The session's run was stopped. NOTE.md is missing from the session's workspace.",
+      reason: "The describing conversation stopped. NOTE.md is missing from the session's workspace.",
       actions: ["try-again", "write-it-myself", "start-over"],
       targets: [
         { action: "try-again", kind: "session", id: sessionId },

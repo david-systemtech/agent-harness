@@ -112,7 +112,8 @@ describe("the start pass", () => {
       {
         step: "appearance",
         state: "needs-attention",
-        reason: "could not check: timed out after 5 s",
+        reason: "Checking took too long. Choose Check again.",
+        details: ["Stopped after 5 seconds."],
         failing: ["appearance.hangs"],
         actions: ["check-again"],
         checkedAt: MANUAL_CLOCK_START,
@@ -255,7 +256,7 @@ describe("what a pass the environment starts appends", () => {
     const holds = answeringCheck();
     const t = await start({
       setupSteps: {
-        steps: [scriptedStep("account", { stateChecks: [{ id: "account.signed-in", holds: "Every account is signed in.", actions: ["sign-in-again"] }] })],
+        steps: [scriptedStep("account", { stateChecks: [{ id: "account.signed-in", holds: "All your accounts are signed in.", actions: ["sign-in-again"] }] })],
         stateChecks: { "account.signed-in": holds.checker },
       },
     });
@@ -366,6 +367,33 @@ describe("the triggers", () => {
     await advance(t, 1_000);
     expect(calls()).toEqual([2, 2]);
   });
+
+  it("check, as the registry names them, the steps a cause fixed elsewhere reaches: a forge account change Carry over, Forges, Memory bank, Skills and Instructions, but a git rejection not Memory bank, a key manager change Forges, Key manager and Instructions (#1860)", async () => {
+    const checks = STEP_REGISTRY.map((step) => ({ id: step.id, holds: answeringCheck() }));
+    const t = await start({
+      setupSteps: {
+        steps: STEP_REGISTRY.map((step) => scriptedStep(step.id, { triggers: step.triggers, stateChecks: [{ id: `${step.id}.holds`, holds: "It holds.", actions: [] }] })),
+        stateChecks: Object.fromEntries(checks.map(({ id, holds }) => [`${id}.holds`, holds.checker])),
+      },
+    });
+    await t.env.setup.startPass;
+    const counted = checks.map(({ holds }) => holds.calls());
+    const checkedSince = (): string[] => checks.flatMap(({ id, holds }, index) => (holds.calls() > counted[index]! ? [id] : []));
+    poke(t, "forge.account.added");
+    await advance(t, 1_000);
+    expect(checkedSince()).toEqual(["carry-over", "forges", "memory-bank", "skills", "instructions"]);
+
+    checks.forEach(({ holds }, index) => void (counted[index] = holds.calls()));
+    poke(t, "key-manager.connection.signed-in");
+    await advance(t, 1_000);
+    expect(checkedSince()).toEqual(["forges", "key-manager", "instructions"]);
+
+    // A git rejection fixes no bank, and an agent's git can record one a second; Memory bank's probe is a git call per bank.
+    checks.forEach(({ holds }, index) => void (counted[index] = holds.calls()));
+    poke(t, "forge.account.git-rejected");
+    await advance(t, 1_000);
+    expect(checkedSince()).toEqual(["carry-over", "forges", "skills", "instructions"]);
+  });
 });
 
 describe("one check of a step at a time", () => {
@@ -412,7 +440,7 @@ describe("a trigger that arrives while the step's check runs", () => {
         steps: [
           scriptedStep("your-machines", {
             writes: ["sessions.autoSettleOnMerge"],
-            checks: [{ key: "sessions.autoSettleOnMerge", check: (value) => value === true || "Sessions are not settled on merge." }],
+            checks: [{ key: "sessions.autoSettleOnMerge", check: (value) => value === true || { reason: "Sessions are not settled on merge.", details: ["sessions.autoSettleOnMerge"] } }],
             budget: "network",
             triggers: ["settings.updated"],
             stateChecks: [{ id: "your-machines.late", holds: "The late check holds.", actions: [] }],
@@ -437,7 +465,15 @@ describe("a trigger that arrives while the step's check runs", () => {
     expect(late.calls()).toBe(2);
     held.answer(true);
     expect((await asked).results).toEqual([
-      { step: "your-machines", state: "needs-attention", reason: "Sessions are not settled on merge.", failing: ["sessions.autoSettleOnMerge"], actions: [], checkedAt: after(0) },
+      {
+        step: "your-machines",
+        state: "needs-attention",
+        reason: "Sessions are not settled on merge.",
+        details: ["sessions.autoSettleOnMerge"],
+        failing: ["sessions.autoSettleOnMerge"],
+        actions: [],
+        checkedAt: after(0),
+      },
     ]);
 
     // A second after the run ended, not after the trigger arrived.
@@ -505,7 +541,16 @@ describe("the last good result", () => {
     await second.env.setup.startPass;
     const client = await second.client();
     expect((await snapshot(second, client)).setup).toEqual([
-      { step: "account", state: "needs-attention", reason: "could not check: timed out after 5 s", failing: ["account.late"], actions: ["check-again"], checkedAt: after(2 * HOUR), lastGood },
+      {
+        step: "account",
+        state: "needs-attention",
+        reason: "Checking took too long. Choose Check again.",
+        details: ["Stopped after 5 seconds."],
+        failing: ["account.late"],
+        actions: ["check-again"],
+        checkedAt: after(2 * HOUR),
+        lastGood,
+      },
     ]);
     await second.close();
 
@@ -514,7 +559,16 @@ describe("the last good result", () => {
     (await check.call(3)).fail(new Error("the account store is locked"));
     await third.env.setup.startPass;
     expect((await snapshot(third, await third.client())).setup).toEqual([
-      { step: "account", state: "needs-attention", reason: "Could not check account.late: the account store is locked.", failing: ["account.late"], actions: [], checkedAt: after(4 * HOUR), lastGood },
+      {
+        step: "account",
+        state: "needs-attention",
+        reason: "agent-harness could not finish checking this step. Choose Check again.",
+        details: ["account.late: the account store is locked"],
+        failing: ["account.late"],
+        actions: ["check-again"],
+        checkedAt: after(4 * HOUR),
+        lastGood,
+      },
     ]);
   });
 
@@ -535,7 +589,7 @@ describe("the last good result", () => {
     second.clock.advance(5_000);
     await second.env.setup.startPass;
     const [result] = (await snapshot(second, await second.client())).setup ?? [];
-    expect(result).toMatchObject({ state: "needs-attention", reason: "could not check: timed out after 5 s" });
+    expect(result).toMatchObject({ state: "needs-attention", reason: "Checking took too long. Choose Check again." });
     expect(result).not.toHaveProperty("lastGood");
   });
 });

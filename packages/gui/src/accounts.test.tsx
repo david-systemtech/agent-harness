@@ -350,7 +350,7 @@ describe("Accounts", () => {
       desk: { accounts: [{ label: "personal" }] },
     });
     const laptop = await openRow(app, "Accounts", "laptop");
-    expect(await within(laptop).findByText("Read-only: This client was paired with laptop without the admin scope.")).toBeDefined();
+    expect(await within(laptop).findByText("Read-only: This app has limited access to laptop, so it cannot change settings or sign in accounts. Pair again with full access to change this.")).toBeDefined();
     expect(within(laptop).getAllByText(/^Read-only:/)).toHaveLength(1);
     const milo = await within(laptop).findByRole("region", { name: "laptop milo" });
     const offer = await within(laptop).findByRole("region", { name: /^Use the Claude Code sign-in/ });
@@ -554,7 +554,7 @@ describe("Default account and model", () => {
       laptop: { scopes: ["read", "sessions:write", "runs:drive", "terminal"], accounts: [{ label: "laptop milo" }], settings: { "accounts.defaultEffort": "medium" } },
     });
     const laptop = await openRow(app, "Default account and model", "laptop");
-    expect(await within(laptop).findByText("Read-only: This client was paired with laptop without the admin scope.")).toBeDefined();
+    expect(await within(laptop).findByText("Read-only: This app has limited access to laptop, so it cannot change settings or sign in accounts. Pair again with full access to change this.")).toBeDefined();
     expect(within(laptop).getAllByText(/^Read-only:/)).toHaveLength(1);
     await within(laptop).findByRole("button", { name: "Effort: Medium (not offered: runs take the model's own)" });
     for (const name of ["Default account", "Model family", "Effort"]) expect(within(laptop).getByRole("button", { name: new RegExp(`^${name}:`) }).hasAttribute("disabled"), name).toBe(true);
@@ -731,6 +731,32 @@ describe("Usage", () => {
     expect(within(gauge).getByText("37%")).toBeTruthy();
     expect(within(gauge).queryByRole("img", { name: /Other limit/ })).toBeNull();
     expect(gauge.outerHTML).not.toMatch(/iguana[_ ]necktie/);
+  });
+
+  it("lists an unknown limit only when it says how full it is or is refused, counts the ones that say nothing in one line, and keeps the reset's comma on the percent", async () => {
+    const app = await opened({ desk: { accounts: [{ label: "personal", identity: MILO }] } });
+    const at = "2026-09-30T10:00:00.000Z";
+    const known = reading("account-1", 0.42, 0.1, at);
+    const unknown = (window: string, utilisation: number | null, verdict: "rejected" | null = null) => ({ window, utilisation, resetsAt: null, verdict, observedAt: at });
+    app.environment("desk").setUsage([{ ...known, windows: [...known.windows, unknown("iguana_necktie", 0), unknown("walrus_hat", null), unknown("otter_scarf", null, "rejected"), unknown("mole_cap", null)] }]);
+    const usage = await openRow(app, "Usage");
+    const gauge = await within(usage).findByRole("region", { name: "milo@example.test" });
+    expect(windows(gauge)).toEqual([expect.stringMatching(/^5-hour 42 42%, resets \d\d:\d\d$/), "Weekly 10 10%", "Other limit 0%", "Other limit — out"]);
+    expect(within(gauge).getByText("2 other limits give no reading.")).toBeDefined();
+    // The comma is not an item of its own in the row's flex line, so no gap sits before it.
+    const fiveHour = within(within(gauge).getByRole("list", { name: "Windows" })).getAllByRole("listitem")[0]!;
+    expect(within(fiveHour).getByText("42%").parentElement?.textContent).toMatch(/^42%, resets \d\d:\d\d$/);
+  });
+
+  it("says only how many unknown limits give no reading when a gauge has no other window", async () => {
+    const app = await opened({ desk: { accounts: [{ label: "personal", identity: MILO }] } });
+    const at = "2026-09-30T10:00:00.000Z";
+    app.environment("desk").setUsage([{ ...reading("account-1", 0.42, 0.1, at), windows: [{ window: "walrus_hat", utilisation: null, resetsAt: null, verdict: null, observedAt: at }] }]);
+    const usage = await openRow(app, "Usage");
+    const gauge = await within(usage).findByRole("region", { name: "milo@example.test" });
+    expect(await within(gauge).findByText("1 other limit gives no reading.")).toBeDefined();
+    expect(within(gauge).queryByRole("list", { name: "Windows" })).toBeNull();
+    expect(within(gauge).queryByText("No plan windows read yet.")).toBeNull();
   });
 
   it("shows every gauge pooled by account identity across every environment, with the accounts and environments in each, and an unreachable environment's readings as last read", async () => {

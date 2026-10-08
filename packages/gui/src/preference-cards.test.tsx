@@ -63,7 +63,7 @@ describe("on a fresh environment", () => {
 
     const permissions = await cardOf(app, "Permissions");
     expect(within(permissions).getByRole("img", { name: "Permissions: Done" })).toBeDefined();
-    expect(within(permissions).getByText(/^Containment and the denylist are set\./)).toBeDefined();
+    expect(within(permissions).getByText(/^Set\./)).toBeDefined();
     expect(stepActions(permissions)).toEqual([]);
     expect(within(permissions).queryByText(/^Read-only:/)).toBeNull();
     // The permissions spec's form, as the Permissions row draws it.
@@ -234,7 +234,7 @@ describe("without admin", () => {
     );
     await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
     await screen.findByRole("region", { name: "Set up" });
-    const line = "Read-only: This client was paired with laptop without the admin scope.";
+    const line = "Read-only: This app has limited access to laptop, so it cannot change settings or sign in accounts. Pair again with full access to change this.";
 
     const permissions = await cardOf(app, "Permissions");
     expect(await within(permissions).findByText(line)).toBeDefined();

@@ -19,6 +19,7 @@ import {
   STEP_PROMPTS,
   STEP_ORDER,
   STEP_REGISTRY,
+  anyValidValue,
   UPDATE_SETTINGS_KEYS,
   isMethodName,
   presetSettings,
@@ -29,12 +30,21 @@ import {
   type SettingsKey,
 } from "./index.js";
 
-it("explains the outcome of every checklist step, including optional steps", () => {
+it("explains the outcome of every checklist step, including optional steps, in setup-copy.md §4.4's words", () => {
   expect(STEP_ORDER.map((id) => STEP_HINTS[id])).toEqual([
-    "Choose your agent’s account", "Bring past work with you", "Work here or elsewhere", "Open pull requests",
-    "Fetch keys when needed", "Keep a shared notebook", "Reuse working procedures", "Guide every session",
-    "See and use web pages", "Choose when agents ask", "Make the window feel right",
+    "Sign in to Claude", "Bring your past chats", "Use it from other devices", "Connect GitHub and others",
+    "Use your key manager", "A notebook agents keep", "Ready-made agent skills", "Notes every agent reads",
+    "Let agents use Chrome", "When agents must ask", "Light, dark and colours",
   ]);
+});
+
+/** What a value check says of a key whose value it cannot use (setup-copy.md §3): the setting's label in the line, the key in details. */
+const refused = (key: SettingsKey) => ({ reason: `A saved setting for this step cannot be used: ${SETTINGS[key].label}. Set it again in Settings.`, details: [key] });
+
+it("names a setting it cannot use by its label, the key only in details (setup-copy.md §3)", () => {
+  const check = anyValidValue("updates.idleWindowMinutes");
+  expect(check(0)).toEqual({ reason: "A saved setting for this step cannot be used: Quiet time before updates in minutes. Set it again in Settings.", details: ["updates.idleWindowMinutes"] });
+  expect(check(30)).toBe(true);
 });
 
 /**
@@ -66,7 +76,7 @@ interface LooseStep {
   readonly writes: readonly string[];
   readonly writesState?: readonly { readonly method: string; readonly parts: readonly string[] }[];
   readonly confirms?: readonly { readonly key: string; readonly value: unknown; readonly sentence: string; readonly acknowledgement: string; readonly records: string }[];
-  readonly checks: readonly { readonly key: string; readonly check: (value: unknown) => true | string }[];
+  readonly checks: readonly { readonly key: string; readonly check: (value: unknown) => true | { readonly reason: string; readonly details: readonly string[] } }[];
   readonly stateChecks: readonly { readonly id: string; readonly holds: string; readonly actions: readonly string[] }[];
   readonly links: readonly ({ readonly row: string } | { readonly step: string })[];
   readonly skippable: boolean;
@@ -276,9 +286,9 @@ describe("the step registry", () => {
     expect(carryOver.writesState?.map((write) => write.method)).toEqual(["carryOver.run", "skills.carryOver", "stateImport.run"]);
   });
 
-  it("links the Carry over entry to the Skills and Memory banks rows, with the local budget and the hour, re-run on account.updated, carry-over.imported and state-import.finished", () => {
+  it("links the Carry over entry to the Skills and Memory banks rows, with the local budget and the hour, re-run on account.updated, carry-over.imported, state-import.finished and every forge.account.* event", () => {
     expect(carryOver.links).toEqual([{ row: "knowledge.skills" }, { row: "knowledge.banks" }]);
-    expect(carryOver).toMatchObject({ budget: "local", cadence: { minutes: 60 }, triggers: ["account.updated", "carry-over.imported", "state-import.finished", "settings.changed"] });
+    expect(carryOver).toMatchObject({ budget: "local", cadence: { minutes: 60 }, triggers: ["account.updated", "carry-over.imported", "state-import.finished", "settings.changed", "forge.account.*"] });
   });
 
   it("may skip Carry over, skipped when carry-over.present finds nothing to carry and no source folder, then checks every adopted directory readable and the last import finished", () => {
@@ -349,7 +359,7 @@ describe("the step registry", () => {
     ]);
     const [check] = instructions.checks;
     expect(check?.key).toBe("instructions.orientation");
-    expect([check?.check(true), check?.check(false), check?.check("on")]).toEqual([true, true, "instructions.orientation does not hold a valid value."]);
+    expect([check?.check(true), check?.check(false), check?.check("on")]).toEqual([true, true, refused("instructions.orientation")]);
   });
 
   it("registers the Browser entry ninth in the order, at home on access.browser, writing the nine browser keys each done on any valid value, with pairing state writes, three state checks, the local budget and the hour, and the browser triggers", () => {
@@ -370,7 +380,7 @@ describe("the step registry", () => {
     ]);
     const presets = presetSettings();
     for (const check of browser.checks) expect(check.check(presets[check.key as SettingsKey]), check.key).toBe(true);
-    expect(browser.checks.find((check) => check.key === "browser.devSites")?.check(["https://myapp.test"])).toBe("browser.devSites does not hold a valid value.");
+    expect(browser.checks.find((check) => check.key === "browser.devSites")?.check(["https://myapp.test"])).toEqual(refused("browser.devSites"));
   });
 
   it("exports the check the switch-over's done checklist runs: the steps of the milestone-1 order no entry registers, in that order (#94)", () => {
@@ -404,19 +414,19 @@ describe("the step registry", () => {
     expect(Object.keys(STEP_LABELS)).toEqual([...STEP_ORDER]);
   });
 
-  it("gives every step one short sentence for its line when done, saying what was found rather than joining its checks' conditions (#1698)", () => {
+  it("gives every step one short sentence for its line when done, saying what was found rather than joining its checks' conditions, in its setup-copy.md §5 words (#1698, #1836)", () => {
     expect(Object.fromEntries(STEP_REGISTRY.map((step) => [step.id, step.done]))).toEqual({
-      account: "Every account is signed in.",
-      "carry-over": "Nothing is waiting to be brought over.",
-      "your-machines": "This machine is ready.",
-      forges: "Every forge account is signed in and answering.",
-      "key-manager": "Every key-manager connection is signed in and reachable.",
-      "memory-bank": "Every bank is reachable.",
-      skills: "Every skill source is in sync.",
-      instructions: "The orientation block renders.",
-      browser: "Chrome is paired, connected and current.",
-      permissions: "Containment and the denylist are set.",
-      appearance: "The theme meets the contrast rules.",
+      account: "All your accounts are signed in.",
+      "carry-over": "Everything is already here.",
+      "your-machines": "This computer is ready.",
+      forges: "Your forges are connected.",
+      "key-manager": "Your key managers are connected.",
+      "memory-bank": "Your notebook is ready.",
+      skills: "Your skills are up to date.",
+      instructions: "Agents get your notes and a summary of this computer.",
+      browser: "Chrome is connected.",
+      permissions: "Set.",
+      appearance: "Your theme is easy to read.",
     });
     for (const step of STEP_REGISTRY) {
       expect(step.done, step.id).toMatch(/^[A-Z][^.]*\.$/);
@@ -519,7 +529,7 @@ describe("the step registry", () => {
         holds: "Auto-update is on or the channel's newest runs, no update is past its cap or blocked, and no failed update left this machine behind.",
         actions: ["update"],
       },
-      { id: "your-machines.host-updater", holds: "No host-side updater manages this environment's updates, or it polled in the last hour.", actions: ["check-again"] },
+      { id: "your-machines.host-updater", holds: "No host-side updater manages this environment's updates, or it polled in the last hour.", actions: ["how-to-set-up", "check-again"] },
       { id: "your-machines.named", holds: "The environment has a name, an icon and a colour.", actions: [] },
       { id: "your-machines.ready", holds: "The environment is ready, and not draining past its cap.", actions: ["check-again"] },
       { id: "your-machines.lan", holds: "LAN binding is off, or the LAN address it names is one this machine holds.", actions: ["check-again"] },
@@ -538,9 +548,9 @@ describe("the step registry", () => {
     expect([presets["network.bindTailnet"], presets["network.bindLan"]]).toEqual([true, null]);
     for (const value of [true, false]) expect(checkOf("network.bindTailnet")(value)).toBe(true);
     for (const value of [null, "192.168.1.20", "10.0.0.7", "fd00::20"]) expect(checkOf("network.bindLan")(value), String(value)).toBe(true);
-    expect(checkOf("network.bindTailnet")(null)).toBe("network.bindTailnet does not hold a valid value.");
+    expect(checkOf("network.bindTailnet")(null)).toEqual(refused("network.bindTailnet"));
     for (const value of ["0.0.0.0", "::", "0:0:0:0:0:0:0:0", "::ffff:0.0.0.0", "desk.local", "", false, true]) {
-      expect(checkOf("network.bindLan")(value), String(value)).toBe("network.bindLan does not hold a valid value.");
+      expect(checkOf("network.bindLan")(value), String(value)).toEqual(refused("network.bindLan"));
     }
   });
 
@@ -636,8 +646,8 @@ describe("the step registry", () => {
   it("checks that every connection is signed in and reachable, every injecting OpenBao login can mint, and each injecting connection's CLI is installed, with actions from ADR 0031's vocabulary (#383)", () => {
     expect(keyManager.stateChecks.map((check) => [check.id, check.actions])).toEqual([
       ["key-manager.present", []],
-      ["key-manager.signed-in", ["sign-in-again"]],
-      ["key-manager.reachable", ["check-again"]],
+      ["key-manager.signed-in", ["sign-in-again", "check-again"]],
+      ["key-manager.reachable", ["check-again", "check-certificate"]],
       ["key-manager.run-tokens", ["check-again"]],
       ["key-manager.cli", ["install", "update"]],
     ]);
@@ -659,8 +669,8 @@ describe("the step registry", () => {
     for (const key of CREDENTIAL_SETTINGS_KEYS) expect(checkOf(key)?.(presets[key]), key).toBe(true);
     expect(checkOf("credentials.injection")?.("deny")).toBe(true);
     expect(checkOf("credentials.injectionByAccount")?.({ "claude-max": "deny" })).toBe(true);
-    expect(checkOf("credentials.injection")?.("inherit")).toBe("credentials.injection does not hold a valid value.");
-    expect(checkOf("credentials.injectionByAccount")?.({ "claude-max": "inherit" })).toBe("credentials.injectionByAccount does not hold a valid value.");
+    expect(checkOf("credentials.injection")?.("inherit")).toEqual(refused("credentials.injection"));
+    expect(checkOf("credentials.injectionByAccount")?.({ "claude-max": "inherit" })).toEqual(refused("credentials.injectionByAccount"));
   });
 
   it("registers the Memory bank entry sixth, after Key manager, at home on knowledge.banks, writing no settings key and its banks through banks.create, banks.join, banks.publish and banks.registry.update (setup spec, \"6. Memory bank\"; #586)", () => {
@@ -704,7 +714,7 @@ describe("the step registry", () => {
     const presets = presetSettings();
     for (const key of UPDATE_SETTINGS_KEYS) expect(checkOf(key)?.(presets[key]), key).toBe(true);
     expect(checkOf("updates.pinnedVersion")?.("0.4.2")).toBe(true);
-    expect(checkOf("updates.idleWindowMinutes")?.(0)).toBe("updates.idleWindowMinutes does not hold a valid value.");
+    expect(checkOf("updates.idleWindowMinutes")?.(0)).toEqual(refused("updates.idleWindowMinutes"));
   });
 
   it("gives ADR 0031's three budget classes their seconds: five for a local read, ten for a network call, thirty for a git probe", () => {
@@ -746,15 +756,15 @@ describe("the step registry", () => {
     expect(stepShapeProblems([{ ...appearance, budget: "git", cadence: { minutes: 15, reason: "The orientation block reports sign-in freshness." } }])).toEqual([]);
   });
 
-  it("re-runs Account on account.updated and signin.updated, Carry over on account.updated, carry-over.imported and state-import.finished, Your machines on the update notices, settings.updated and the environment's name, icon and colour set (#323), Forges on every forge.account.* event and tools.updated, Key manager on every key-manager.* event and tools.updated, Memory bank on every bank.* event (#586), Skills on skills.updated, Instructions on its own events and every registry its orientation block reads, Browser on chrome.updated and extension.seen, Permissions on settings.updated and denylist.changed, and Appearance on settings.updated", () => {
+  it("re-runs Account on account.updated and signin.updated, Carry over on account.updated, carry-over.imported, state-import.finished and every forge.account.* event, Your machines on the update notices, settings.updated and the environment's name, icon and colour set (#323), Forges on every forge.account.* event, tools.updated and every key-manager.* event, Key manager on every key-manager.* event and tools.updated, Memory bank on every bank.* event (#586) and forge.account.added, updated, verified, primary-set and removed, Skills on skills.updated and every forge.account.* event (#1860), Instructions on its own events and every registry its orientation block reads, Browser on chrome.updated and extension.seen, Permissions on settings.updated and denylist.changed, and Appearance on settings.updated", () => {
     expect(STEP_REGISTRY.map((step) => [step.id, step.triggers])).toEqual([
       ["account", ["account.updated", "signin.updated"]],
-      ["carry-over", ["account.updated", "carry-over.imported", "state-import.finished", "settings.changed"]],
+      ["carry-over", ["account.updated", "carry-over.imported", "state-import.finished", "settings.changed", "forge.account.*"]],
       ["your-machines", ["environment.update-*", "settings.updated", "environment.renamed", "environment.icon-set", "environment.colour-set"]],
-      ["forges", ["forge.account.*", "tools.updated"]],
+      ["forges", ["forge.account.*", "tools.updated", "key-manager.*"]],
       ["key-manager", ["key-manager.*", "tools.updated"]],
-      ["memory-bank", ["bank.*"]],
-      ["skills", ["skills.updated"]],
+      ["memory-bank", ["bank.*", "forge.account.added", "forge.account.updated", "forge.account.verified", "forge.account.primary-set", "forge.account.removed"]],
+      ["skills", ["skills.updated", "forge.account.*"]],
       ["instructions", ["bank.*", "instructions.*", "account.updated", "key-manager.*", "forge.account.*", "environment.renamed"]],
       ["browser", ["chrome.updated", "extension.seen"]],
       ["permissions", ["settings.updated", "denylist.changed"]],
@@ -886,21 +896,21 @@ describe("the step registry", () => {
     for (const key of keys.slice(0, 3)) {
       expect(checkOf(key)(null), key).toBe(true);
       expect(checkOf(key)("opus"), key).toBe(true);
-      expect(checkOf(key)(""), key).toMatch(key);
+      expect(checkOf(key)(""), key).toEqual(refused(key));
     }
     expect(checkOf("accounts.favouriteModels")([])).toBe(true);
     expect(checkOf("accounts.favouriteModels")(["opus", "sonnet"])).toBe(true);
-    expect(checkOf("accounts.favouriteModels")(["opus", "opus"])).toMatch(/accounts\.favouriteModels/);
+    expect(checkOf("accounts.favouriteModels")(["opus", "opus"])).toEqual(refused("accounts.favouriteModels"));
     const check = checkOf("providers.processIdleMinutes");
     expect(check(presetSettings()["providers.processIdleMinutes"])).toBe(true);
     expect(check(1440)).toBe(true);
-    expect(check(0)).toMatch(/providers\.processIdleMinutes/);
+    expect(check(0)).toEqual(refused("providers.processIdleMinutes"));
   });
 
   it("gives the Account entry account.present, with no action since the card's Sign in is the fix, and account.signed-in, with Sign in again, and never skips it (ADR 0018; #574)", () => {
     expect(account.stateChecks).toEqual([
       { id: "account.present", holds: "At least one account is on this environment.", actions: [] },
-      { id: "account.signed-in", holds: "Every account on this environment is signed in.", actions: ["sign-in-again"] },
+      { id: "account.signed-in", holds: "Every account on this environment is signed in.", actions: ["sign-in-again", "check-again"] },
     ]);
     expect(account.skippable).toBe(false);
     expect(account.skip).toBeUndefined();
@@ -959,9 +969,9 @@ describe("the step registry", () => {
     }
     expect(check("sessions.autoSettleOnMerge")(true)).toBe(true);
     expect(check("sessions.transcriptCompactAfterDays")(1)).toBe(true);
-    expect(check("sessions.transcriptCompactAfterDays")(0)).toMatch(/sessions\.transcriptCompactAfterDays/);
-    expect(check("sessions.autoSettleAfterIdle")({ amount: 0, unit: "days" })).toMatch(/sessions\.autoSettleAfterIdle/);
-    expect(check("sessions.autoSettleOnMerge")("yes")).toMatch(/sessions\.autoSettleOnMerge/);
+    expect(check("sessions.transcriptCompactAfterDays")(0)).toEqual(refused("sessions.transcriptCompactAfterDays"));
+    expect(check("sessions.autoSettleAfterIdle")({ amount: 0, unit: "days" })).toEqual(refused("sessions.autoSettleAfterIdle"));
+    expect(check("sessions.autoSettleOnMerge")("yes")).toEqual(refused("sessions.autoSettleOnMerge"));
   });
 });
 
