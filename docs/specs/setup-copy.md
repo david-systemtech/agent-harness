@@ -183,7 +183,7 @@ Field `Pairing link` (no example value as placeholder), button **Pair**; **Scan 
 | `{name} is this machine's local environment: it connects through its grant, with no code.` | `That link is for this computer. This app is already connected to it.` |
 
 ### 4.3 Close dialog (gui/src/setup/checklist-window.tsx)
-Words stay: `Leave set up without an account?` / `You can look around, but you will need to sign in before starting a session. Set up will be waiting in Settings.` / **Keep setting up** / **Leave for now**. It asks about the HOME computer's accounts, not the one picked.
+Words stay: `Leave set up without an account?` / `You can look around, but you will need to sign in before starting a session. Set up will be waiting in Settings.` / **Keep setting up** / **Leave for now**. In the full checklist, it asks about the accounts on the computer shown in the header, matching the Account gate and Continue (#2018). On the introduction, which has no computer picker, it asks about the home computer's accounts.
 
 ### 4.4 Checklist frame (checklist-view.tsx, step-card.tsx)
 - Header: `Set up` · `Setting up:` {picker} (replaces the label "Environment") · **Close**.
@@ -230,7 +230,23 @@ quoted from the files named; a builder greps for them.
 - Lines: done `{label} is signed in.` / `All {n} accounts are signed in.`; none `No Claude account yet. Sign in to start.`;
   signed out `{label} is signed out. Sign in again to use it.`; expired `{label}'s sign-in has run out. Sign in again to keep using it.`;
   unreadable `agent-harness could not read {label}'s sign-in. Choose Check again.` (offers Check again, not Sign in again; Details: the read's error);
-  several `{n} accounts need to sign in again: {labels}.` (one button each).
+  several `{n} accounts need to sign in again: {labels}.` (one button each); several unreadable
+  `agent-harness could not read the sign-ins of {n} accounts: {labels}. Choose Check again.`
+- A new account from **Sign in with Claude** is added as `Claude account` (`Claude account 2`, …) and takes its email as its label once
+  signed in, unless the person chose or renamed it (even to the same name). More options: `Label for the new account`, hint `Leave it empty to name the account by its email.`
+  Settings › Accounts shows `Label for the new account` beside the question when the computer's sign-in has no email to name it by,
+  or when using it is refused because its name is already taken.
+- Rows (#1842): `Email` (`Not known until it signs in`), `Status` (`Signed in` / `Signed out` / `Sign-in ran out` / `Cannot read the sign-in`);
+  More options: field `Name`, **Rename**, **Remove…**; Details: `Folder: {path} (Claude Code's own, used in place)` /
+  `Folder: {path} (made by agent-harness)`, `Plan: {reading}`, and for an unreadable read `Sign-in read: {error}`.
+- Messages (#1842): used `{label} is signed in.`; renamed `Renamed {old} to {new}.`; removed `Removed {label}.` /
+  `Removed {label} and deleted its sign-in and history.`; a name on one line only `Use one line.`. Remove dialog: title `Remove {label}?`,
+  description `Claude Code stays signed in on {computer}.` / `Its sign-in and history stay on {computer} unless you delete them too.`
+- Refusals of **Use this sign-in** besides the table's: Claude Code not there `Claude Code is not on this computer. Sign in with Claude instead.`;
+  not looked for yet `agent-harness has not looked for Claude Code on this computer yet. Try again in a moment.`; no email to name it by
+  `This sign-in has no email to name the account by. Enter a name.` The folder is the refusal's data, shown under Details.
+- Default account picker: unset `Your first account`; a removed one `The account you chose was removed. New sessions use your first account.`
+  (the table's `{label} was removed. …` cannot name it: the setting keeps only the removed account's id).
 
 | Old | New |
 | --- | --- |
@@ -446,6 +462,19 @@ quoted from the files named; a builder greps for them.
 - A connection added while it cannot be reached reads `Saved, but agent-harness could not reach {address}. Check the address, then choose Check again.` (never "Added …" followed by a failure).
 - The "every run uses its keys" switch shows the same state here and in Settings › Key managers; a notice about a removed connection goes away with it.
 - A connection's health is one line: `{state} since {time}. {fix}` with one button; never three sentences saying the same.
+- Lines the code needs beyond these (#1851): a connection's `{state}` and `{fix}` with its button are: connected `Connected` (no fix); signing in `Signing in`;
+  not signed in `Not signed in` `Sign in to use it.` **Sign in**; refused `Not accepted` `Sign in again with a working token.` **Sign in again**;
+  ran out `Expired` `Sign in with a new token.` **Sign in again**; no answer `Not answering` `Check the address and the connection, then choose Check again.` **Check again**;
+  sealed `Locked (sealed)` `Unlock it, then choose Check again.` **Check again**; certificate `Certificate not trusted` `Choose Check certificate to review it.` **Check certificate**;
+  not ready `Not ready` `Choose Check again.` **Check again**; the environment's own words for the status are the step's Details. A Connect that saved a connection
+  awaiting its sign-in says `Saved. {label} is not signed in yet.`; one saved sealed, with its certificate not trusted or not ready says `Saved, but {label} is not
+  connected yet. {fix}`. A Connect refused because that key manager is connected here already says `{provider} at {address} is connected already.` Details.
+  `{provider}` is OpenBao, Doppler, 1Password or Bitwarden Secrets Manager; the choices name OpenBao `OpenBao or Vault`. Once a key manager is connected the
+  question drops `I do not use one` and nothing is chosen: choosing one connects another. The form's name (preset to `{provider}`), and Doppler's and Bitwarden's
+  preset address, sit in More options with the mount, token role and certificate; a connection's policy ticks and its tool's row sit in one More options under
+  the connections. Move with one token reads `agent-harness keeps 1 token itself. Move it into {label}?`.
+  While a connection's switch is on it also says `Turning it off stops every key manager's keys and the forges' credentials for runs here.`: off denies
+  `credentials.injection`, the one answer every supplier reads (whether it should turn off that connection alone is #1956).
 
 ### 5.8 Memory bank (gui/src/banks/*, gui/src/setup/minted-session-card.tsx; environment/src/banks/*)
 - Title `Give your agents a notebook`. Why `Agents write down what they learn, so the next session already knows it.`
