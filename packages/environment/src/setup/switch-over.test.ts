@@ -149,7 +149,7 @@ describe("the registered checks on the Environment clock", () => {
     t.clock.advance(1);
     const failed = await changed("instructions");
     expect(failed).toMatchObject({ state: "needs-attention", failing: ["instructions.orientation-renders"], checkedAt: t.clock.now().toISOString() });
-    expect(failed.reason).toContain("banks");
+    expect(failed.reason).toBe("agent-harness could not read part of this computer's setup: Memory bank.");
     unreadRegistries = [];
     await client.request("instructions.create", { commandId: randomUUID(), id: randomUUID(), title: "Contract", body: "Check the owners." });
     t.clock.advance(999);
@@ -187,7 +187,7 @@ describe("the registered checks on the Environment clock", () => {
     await t.close();
     let restartAnswered!: (answer: { text: string; unreadRegistries: string[] }) => void;
     const restartPending = new Promise<{ text: string; unreadRegistries: string[] }>((resolve) => { restartAnswered = resolve; });
-    const restarted = await startTestEnvironment({ dataDir, clock: t.clock, orientation: () => restartPending });
+    const restarted = await startTestEnvironment({ dataDir, clock: t.clock, orientation: () => restartPending, awaitSetupStartPass: false });
     onCleanup(() => restarted.close());
     expect(restarted.env.id).toBe(t.env.id);
     const reader = await restarted.client();

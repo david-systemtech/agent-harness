@@ -2,11 +2,14 @@ import { adminCall, isLive, isRegisteredStep, uuidv4, uuidv7, type CardAction } 
 import type { PromptVariant, SetupTarget } from "@agent-harness/contracts";
 import { BookOpen, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { usePhoneFrame } from "../frame/phone-frame.js";
+import { ShowSideColumn } from "../side-column/side-panes-menu.js";
 import { EscapeBoundary } from "../keys/key-dispatch.js";
 import { SessionPane } from "../grid/session-pane.js";
 import { useOpenInFocusedPane } from "../grid/open-session.js";
 import { sideColumnKey } from "../presentation.js";
 import { NO_COLUMN, showPane } from "../side-column/column.js";
+import { keepShownOnArrival } from "../side-column/side-column.js";
 import { StatusLine } from "../status/status-line.js";
 import { PaneLines } from "../session/pane-line.js";
 import { PromptFieldsProvider } from "../prompt-card/prompt-card.js";
@@ -76,6 +79,7 @@ export const MintedSessionCard = ({ environmentId, step, subject, artefact, outc
       const manual = { environmentId, sessionId: id };
       const columnKey = sideColumnKey(manual);
       setColumns((columns) => ({ ...columns, [columnKey]: showPane(columns[columnKey] ?? NO_COLUMN, "files") }));
+      keepShownOnArrival(manual);
       open(manual);
       checklist.leaveForMain();
       return;
@@ -99,6 +103,7 @@ export const MintedSessionCard = ({ environmentId, step, subject, artefact, outc
 
 const MintedConversation = ({ environmentId, sessionId, expanded, setExpanded, outcome }: { readonly environmentId: string; readonly sessionId: string; readonly expanded: boolean; setExpanded(expanded: boolean): void; readonly outcome: "landed" | "landed and awaiting review" | undefined }) => {
   const web = useShell() === undefined;
+  const { narrow } = usePhoneFrame();
   const [viewportHeight, setViewportHeight] = useState<number>();
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -122,6 +127,7 @@ const MintedConversation = ({ environmentId, sessionId, expanded, setExpanded, o
     <h3 className="min-w-0 flex-1 truncate text-xs font-medium text-ink">{projection.summary?.title ?? "Authoring conversation"}</h3>
     <p role="status" aria-label="Authoring status" className="sr-only text-2xs text-ink-muted sm:not-sr-only">{projection.parkedPrompts.length > 0 ? "waiting for you" : isLive(runs.state) ? "running" : outcome ?? (projection.draft !== null ? "waiting for you" : "needs attention")}</p>
     <Button variant="outline" size="sm" aria-label="Open in the main window" title="Open in the main window · Tab, Enter or Space" onClick={() => { open(session); checklist.leaveForMain(); }}><ExternalLink aria-hidden="true" /><span className="hidden sm:inline">Open in the main window</span></Button>
+    {narrow && <ShowSideColumn session={session} />}
     <StatusLine environmentId={environmentId} sessionId={sessionId} />
   </header>} /></PaneLines></section>
       </DialogContent>}</EscapeBoundary>

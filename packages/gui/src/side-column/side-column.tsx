@@ -4,16 +4,19 @@ import { directoryOf, outsideWorkspace, typedPath } from "@agent-harness/client-
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSlashCommand } from "../composer/slash-commands.js";
+import { phoneLayoutMedia } from "../frame/phone-frame.js";
 import { BrowserPane } from "../browser/browser-pane.js";
 import { useBrowserPanes } from "../browser/browser-panes.js";
 import { useGridPaneId } from "../grid/grid.js";
 import { PreviewPane } from "../preview/preview-pane.js";
-import type { SidePane } from "../presentation.js";
+import { sessionOfHash } from "../platform/browser-boot.js";
+import { sideColumnKey, type PaneSession, type SideColumn, type SidePane } from "../presentation.js";
 import { usePaneLine } from "../session/pane-line.js";
 import { TerminalPane } from "../terminal/terminal-pane.js";
 import { useTerminalPanes } from "../terminal/terminal-panes.js";
 import { IconButton } from "../ui/index.js";
 import { classes } from "../ui/classes.js";
+import { isAttentionOpened } from "../web/push-worker.js";
 import { useObservable, useRuntime } from "../window-context.js";
 import { closePane, hideColumn, showPane, useSideColumn } from "./column.js";
 import { DockHeader, DockRail } from "./dock-header.js";
@@ -22,6 +25,13 @@ import { DocumentsPane } from "./documents-pane.js";
 import { FilesPane, WORKSPACE_TOP, type FilesPlace } from "./files-pane.js";
 import { PANES, paneCapability } from "./panes.js";
 import { TasksPane } from "./tasks-pane.js";
+
+/** Sessions a gesture showed a pane for just before opening them, as Set up's "Write it myself" does. */
+const shownByGesture = new Set<string>();
+/** Keeps the pane just shown in `session`'s column when the session next arrives, on a phone too (#1903). */
+export const keepShownOnArrival = (session: PaneSession) => { shownByGesture.add(sideColumnKey(session)); };
+const onPhone = () => phoneLayoutMedia().some((query) => query.matches);
+const hideLeftOpen = (held: SideColumn) => (held.hidden ? held : hideColumn(held, true));
 
 export interface SideColumnViewProps {
   readonly environmentId: string;
@@ -45,8 +55,11 @@ export interface SideColumnViewProps {
  * session is open in the pane. The Terminal pane stays drawn while the connection cannot open a
  * terminal, keeping the one it draws, and its close button closes that
  * terminal too (#409).
+ *
+ * A narrow pane brings back its hidden sheet from a handle at its edge; a phone pane
+ * (`restoreInHeader`) leaves that to its authoring or window header, so nothing covers its transcript (#1960, #1977).
  */
-export const SideColumnView = ({ environmentId, sessionId }: SideColumnViewProps) => {
+export const SideColumnView = ({ environmentId, sessionId, restoreInHeader = false }: SideColumnViewProps & { readonly restoreInHeader?: boolean }) => {
   const runtime = useRuntime();
   // The connections' phases: each pane's capability is asked again whenever one moves.
   useObservable(runtime.projections.environments);
@@ -98,15 +111,37 @@ export const SideColumnView = ({ environmentId, sessionId }: SideColumnViewProps
   const opener = useRef<HTMLElement | null>(null);
   const wasVisible = useRef(false);
   const [narrow, setNarrow] = useState(false);
+  // A session leaving for its hidden Activity starts again unmeasured, as on a reload: its sheet does not take focus on return.
+  useLayoutEffect(() => () => { setNarrow(false); wasVisible.current = false; }, []);
   useEffect(() => {
     const owner = host.current?.parentElement;
     if (!owner) return;
+    // Runs each time the session arrives in the pane: a session coming back from its hidden Activity keeps its refs, not its effects.
+    let arrived = false;
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setNarrow((entry.borderBoxSize[0]?.inlineSize ?? entry.contentRect.width) < 900);
+      if (!entry) return;
+      const floats = (entry.borderBoxSize[0]?.inlineSize ?? entry.contentRect.width) < 900;
+      setNarrow(floats);
+      // On a phone a sheet left open is not put back over the session it would cover (#1903): the session opens
+      // with its column hidden, and the header's control brings back the pane it showed. Elsewhere it is restored as it was.
+      if (!arrived && !shownByGesture.delete(sideColumnKey({ environmentId, sessionId })) && floats && onPhone()) change(hideLeftOpen);
+      arrived = true;
     });
     observer.observe(owner);
     return () => observer.disconnect();
-  }, []);
+  }, [change, environmentId, sessionId]);
+  useEffect(() => {
+    // A notification tapped while this window already shows the session reloads nothing: the worker says so instead.
+    const worker = "serviceWorker" in navigator ? navigator.serviceWorker : undefined;
+    if (!worker) return;
+    const opened = ({ data }: MessageEvent) => {
+      if (!isAttentionOpened(data) || !onPhone()) return;
+      const session = sessionOfHash(new URL(data.url).hash);
+      if (session?.environmentId === environmentId && session.sessionId === sessionId) change(hideLeftOpen);
+    };
+    worker.addEventListener("message", opened);
+    return () => worker.removeEventListener("message", opened);
+  }, [change, environmentId, sessionId]);
 
   const { shown } = column;
   const hide = () => change((held) => hideColumn(held, true));
@@ -127,15 +162,18 @@ export const SideColumnView = ({ environmentId, sessionId }: SideColumnViewProps
         sheet.current?.querySelector<HTMLButtonElement>('[aria-label="Close side sheet"]')?.focus();
       }
     } else if (wasVisible.current) {
-      if (narrow && column.hidden && shown !== null) reopen.current?.focus();
-      else if (opener.current?.isConnected) opener.current.focus();
+      if (narrow && column.hidden && shown !== null) {
+        const headerControl = host.current?.parentElement?.querySelector<HTMLElement>("[data-authoring-header] [data-dock-reopen]")
+          ?? document.querySelector<HTMLElement>("[data-window-header] [data-dock-reopen]");
+        (restoreInHeader ? headerControl : reopen.current)?.focus();
+      } else if (opener.current?.isConnected) opener.current.focus();
       else host.current?.parentElement?.querySelector<HTMLElement>('[aria-label="Message"]')?.focus();
     }
     wasVisible.current = visibleSheet;
-  }, [visibleSheet, narrow, column.hidden, shown]);
+  }, [visibleSheet, narrow, column.hidden, shown, restoreInHeader]);
   return <div ref={host} className="contents">
     {shown !== null && <>
-      {narrow && column.hidden && <IconButton ref={reopen} data-dock-reopen label="Show the side column" keys="Enter / Space"
+      {narrow && column.hidden && !restoreInHeader && <IconButton ref={reopen} data-dock-reopen label="Show the side column" keys="Enter / Space"
         onClick={() => change((held) => hideColumn(held, false))}
         className="absolute inset-y-[6px] right-0 z-30 h-auto w-[16px] rounded-l-md border-hairline bg-panel p-0"><ChevronLeft aria-hidden="true" /></IconButton>}
       <aside ref={sheet} role={narrow ? "dialog" : undefined} aria-modal={narrow ? true : undefined} onKeyDown={(event) => {

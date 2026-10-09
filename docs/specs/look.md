@@ -878,8 +878,8 @@ focusable disabled wrapper, not only on pointer hover. Session and PR tooltips
 may include the rich facts described in §9 and gui.md. Focus shows a tooltip
 only when it follows the keyboard or comes before any input. The phone layout
 (the media test the phone frame uses) asks more: only focus after a Tab press
-shows one, so focus the app moves itself (a side sheet restored on reload
-takes it) floats nothing over the window's notices, and no tooltip there
+shows one, so focus the app moves itself (a side sheet opened from its edge
+handle takes it) floats nothing over the window's notices, and no tooltip there
 carries a key legend ("Enter / Space"), as nothing on a phone presses it.
 
 ### 11.3 Palette, banners and transient toasts
@@ -985,7 +985,7 @@ GUI's data/actions and scopes; this table fixes the rebuilding anatomy.
 
 | Pane | Drawing and states |
 | --- | --- |
-| Set up summary | Numbered step links with aligned 6px health dots and one concise status; counts, Re-run, Open full checklist and Set up another machine, no second notice feed. |
+| Set up summary | Numbered steps, each with its state badge (health dot, icon and word), a link opening Set up at it and its whole line, never cut; counts, Check everything again, Open Set up and Set up another computer (setup-copy.md §4.5), no second notice feed. |
 | Accounts | Title action Add account; panel/hairline/lg cards, selected wash-strong, swatch/name/identity, status and plan badges, usage ring, secondary Edit/Remove. Create/edit inside body with labelled provider/name/colour/plan/directory fields only where supported by this product; adoption remains in place. Sign-in card shows verification URL, code field, fallback command/copy, pending spinner, retryable error, expiry/cancel/success. One primary action for current stage, not a primary on every provider tile. |
 | Default account and model | Staged picker §10.6 near labels; catalogue Refresh, friendly model name with mono id beneath, quick-access checkbox and supported capability badges, Use action/reason. No repeated provider prefix or catalogue jargon in primary value. Defaults remain runtime-owned. |
 | Usage | Pooled identity groups,24px rings and 4px bars, reset/time/staleness, account/environment provenance; one sign-in/unavailable sentence per identity, not repeated empty cards. Hand-off controls described under their label. |
@@ -1227,7 +1227,7 @@ script, geometry expectations and baseline; surface tickets add separate files.
 | product-surfaces | Pairing, queue/fork/rewind/check, theme, shortcuts, banks/routines | Shared primitive dimensions, state labels and scope/command parity |
 
 Light subset: window-empty, window-not-ready, primitives, transcript with diff,
-inline-asks, composer/status/run-picker, palette/dialogs/notices, Settings
+inline-asks, composer/status (and its usage details)/run-picker, palette/dialogs/notices, Settings
 Accounts/Permissions/Theme/Usage and first-run intro/Account/Appearance. Other dark
 scenes still test token resolution in both ladders through theme/harness checks.
 Geometry tolerance±0.5px unless a scene states a reason for another tolerance;

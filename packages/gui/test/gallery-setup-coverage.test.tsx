@@ -8,11 +8,28 @@ it("captures the real Account gate with disabled Skip and Continue", async () =>
   const Scene = setupRegionScene("account");
   const view = render(<Scene ladder="dark" />);
   try {
-    await screen.findByRole("heading", { name: "Account", level: 2 });
+    await screen.findByRole("heading", { name: "Sign in to Claude", level: 2 });
     const footer = screen.getByRole("navigation", { name: "Step navigation" });
     expect(within(footer).getByRole("button", { name: "Skip for now" }).hasAttribute("disabled")).toBe(true);
     expect(within(footer).getByRole("button", { name: "Continue" }).hasAttribute("disabled")).toBe(true);
+    expect(within(footer).getByText("Sign in to continue. Account is the one required step.")).toBeDefined();
     expect(screen.getAllByText("Optional")).toHaveLength(10);
+  } finally { view.unmount(); }
+});
+
+// setup-copy.md §4.4: every state the rail shows at once, as words, and the card of a step the computer's version lacks (#1839).
+it("captures the rail with every state a computer's results give, on the card of a step its version does not have", async () => {
+  const Scene = setupRegionScene("rail-states");
+  const view = render(<Scene ladder="dark" />);
+  try {
+    const rail = await screen.findByRole("navigation", { name: "Set up steps" });
+    await within(rail).findByRole("button", { name: "Key manager", description: / Not available / });
+    expect([...rail.querySelectorAll("[data-state-word]")].map((word) => word.textContent)).toEqual([
+      "Done", "Needs a fix", "Not set up", "Checking", "Not available", "Done", "Done", "Done", "Done", "Done", "Done",
+    ]);
+    const card = screen.getByRole("region", { name: "Key manager" });
+    expect(within(card).getByText("desk runs an older agent-harness without this step. Update desk to set it up.")).toBeDefined();
+    expect(within(screen.getByRole("navigation", { name: "Step navigation" })).getByRole("button", { name: "Skip for now" }).hasAttribute("disabled")).toBe(false);
   } finally { view.unmount(); }
 });
 
@@ -34,15 +51,89 @@ it("captures Your machines' never-polled container line with the host updater's 
   } finally { view.unmount(); }
 });
 
+// setup-copy.md §5.11: the Browser card before anything is done, at step 5 with its code, and with its Chrome closed (#1857).
+it("captures the Browser card's steps 1 to 4 with no code, step 5 with its code, and a closed Chrome with no Unpair beside its line", async () => {
+  for (const [kind, check] of [
+    ["browser-step-1", async (card: HTMLElement) => {
+      await within(card).findByText("/extension/current");
+      expect(within(card).getByRole("img", { name: "Step 1: not done yet" })).toBeDefined();
+      expect(within(card).queryByRole("textbox", { name: "Pairing code" })).toBeNull();
+    }],
+    ["browser-code", async (card: HTMLElement) => {
+      expect(((await within(card).findByRole("textbox", { name: "Pairing code" })) as HTMLInputElement).value).toBe("TEST2345");
+      expect(within(card).getByRole("timer").textContent).toBe("5 min left");
+      expect(within(card).getByText("Chrome found the extension.")).toBeDefined();
+    }],
+    ["browser-closed", async (card: HTMLElement) => {
+      expect(await within(card).findByText("Chrome is closed, so agents cannot use it. Open Chrome. This updates by itself.")).toBeDefined();
+      await within(card).findByRole("img", { name: "Step 5: done" });
+      expect(within(card).queryByRole("button", { name: /Unpair/ })).toBeNull();
+    }],
+  ] as const) {
+    const Scene = setupRegionScene(kind);
+    const view = render(<Scene ladder="dark" />);
+    try {
+      await check(await screen.findByRole("region", { name: "Browser" }));
+    } finally { view.unmount(); }
+  }
+});
+
+// setup-copy.md §5.10: the Instructions card's Your note, Suggestions and fold, and its unread line with Go to each step (#1856).
+it("captures the Instructions card with Your note, Suggestions and Write your own, and its unread line naming the steps with Go to each", async () => {
+  const Scene = setupRegionScene("instructions");
+  const view = render(<Scene ladder="dark" />);
+  try {
+    const card = await screen.findByRole("region", { name: "Instructions" });
+    const note = await within(card).findByRole("region", { name: "Your note" });
+    expect(within(within(note).getByRole("region", { name: "About my setup" })).getByRole("button", { name: "Edit" })).toBeDefined();
+    const suggestions = within(card).getByRole("region", { name: "Suggestions" });
+    expect(suggestions.querySelector("[data-setup-suggestions]")).not.toBeNull();
+    expect((within(suggestions).getByRole("checkbox", { name: "Read code from a fresh checkout" }) as HTMLInputElement).checked).toBe(true);
+    expect(within(card).getByRole("button", { name: "Write your own" })).toBeDefined();
+    expect(await within(card).findByRole("button", { name: "What agents are told about this computer" })).toBeDefined();
+    expect(within(card).queryByRole("button", { name: /^Go to / })).toBeNull();
+  } finally { view.unmount(); }
+  const Unread = setupRegionScene("instructions-unread");
+  const unread = render(<Unread ladder="dark" />);
+  try {
+    const card = await screen.findByRole("region", { name: "Instructions" });
+    expect(await within(card).findByText("agent-harness could not read part of this computer's setup: Forges, Memory bank.")).toBeDefined();
+    expect((await within(card).findAllByRole("button", { name: /^Go to / })).map((button) => button.textContent)).toEqual(["Go to Forges", "Go to Memory bank"]);
+    expect(card.querySelector("[data-go-to-steps]")).not.toBeNull();
+  } finally { unread.unmount(); }
+});
+
+// setup-copy.md §5.12: the Permissions card's four choices, and its line for a sandbox that does not work here with How to fix it open (#1858).
+it("captures the Permissions card's four choices, and a sandbox that does not work here with Turn the sandbox off and How to fix it open", async () => {
+  const Choices = setupRegionScene("permissions");
+  const choices = render(<Choices ladder="dark" />);
+  try {
+    const card = await screen.findByRole("region", { name: "Permissions" });
+    const ceiling = await within(card).findByRole("radiogroup", { name: "How much agents may do without asking" });
+    expect(within(ceiling).getAllByRole("radio").map((radio) => radio.getAttribute("aria-label"))).toEqual(["Ask before any change", "Edit files, ask for the rest", "Let Claude decide", "Never ask"]);
+    expect(within(card).getByRole("button", { name: "More safety settings" })).toBeDefined();
+  } finally { choices.unmount(); }
+  const Sandbox = setupRegionScene("permissions-sandbox");
+  const sandbox = render(<Sandbox ladder="dark" />);
+  try {
+    const card = await screen.findByRole("region", { name: "Permissions" });
+    expect(await within(card).findByText("The sandbox you chose does not work on this computer yet.")).toBeDefined();
+    expect(within(card).getByRole("button", { name: "Turn the sandbox off" })).toBeDefined();
+    await waitFor(() => expect(within(card).getByRole("button", { name: "How to fix it" }).getAttribute("aria-expanded")).toBe("true"));
+    expect(within(card).getByText("sudo apt-get install bubblewrap socat")).toBeDefined();
+    expect(card.querySelector("[data-step-status] [data-notice-tone] h5")).not.toBeNull();
+  } finally { sandbox.unmount(); }
+});
+
 it.each<[StepId, string]>([["your-machines", "Your machines"], ["forges", "Forges"], ["key-manager", "Key manager"], ["instructions", "Instructions"], ["permissions", "Permissions"], ["appearance", "Appearance"]])("captures the real %s card and its persistent footer", async (step, label) => {
   const Scene = setupRegionScene(step);
   const view = render(<Scene ladder="light" />);
   try {
-    await screen.findByRole("heading", { name: label, level: 2 });
+    await screen.findByRole("region", { name: label });
     const footer = screen.getByRole("navigation", { name: "Step navigation" });
     expect(within(footer).getByRole("button", { name: "Back" })).toBeTruthy();
     expect(within(footer).getByRole("button", { name: "Skip for now" }).hasAttribute("disabled")).toBe(false);
-    expect(within(footer).getByRole("button", { name: step === "appearance" ? "Finish" : "Continue" })).toBeTruthy();
+    expect(within(footer).getByRole("button", { name: step === "appearance" ? "Finish set up" : "Continue" })).toBeTruthy();
   } finally { view.unmount(); }
 });
 
@@ -55,7 +146,7 @@ it("captures the one-time close confirmation without completing set up", async (
     expect(screen.queryByRole("tooltip")).toBeNull();
     await userEvent.setup().click(within(dialog).getByRole("button", { name: "Keep setting up" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Account", level: 2 })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Sign in to Claude", level: 2 })).toBeTruthy();
   } finally { view.unmount(); }
 });
 
@@ -64,7 +155,22 @@ it("captures the ready introduction before the owner enters Account", async () =
   const view = render(<Scene ladder="light" />);
   try {
     expect((await screen.findByRole("button", { name: "Begin set up" })).hasAttribute("disabled")).toBe(false);
-    expect(screen.getByText("The environment on this machine is ready")).toBeTruthy();
+    expect(screen.getByText("agent-harness is ready on this computer.")).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Step navigation" })).toBeNull();
+  } finally { view.unmount(); }
+});
+
+// setup-copy.md §5.13: the saved colours survive while the Default question is open.
+it.each(["light", "dark"] as const)("captures the Default theme question in %s before any write", async (ladder) => {
+  const { default: Scene } = await import("../gallery/scenes/setup-appearance-default.js");
+  const view = render(<Scene ladder={ladder} />);
+  try {
+    const question = await screen.findByRole("alertdialog", { name: "Use the Default theme?" });
+    expect(within(question).getByText("Your colour changes to Loud will be lost.")).toBeDefined();
+    expect(within(question).getByRole("button", { name: "Use Default" })).toBeDefined();
+    await userEvent.setup().click(within(question).getByRole("button", { name: "Keep Loud" }));
+    const card = screen.getByRole("region", { name: "Appearance" });
+    expect(within(card).getByText("Loud, on desk")).toBeDefined();
+    expect(within(card).getByRole("button", { name: "Use the Default theme" })).toBeDefined();
   } finally { view.unmount(); }
 });

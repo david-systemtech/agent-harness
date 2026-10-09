@@ -1,5 +1,5 @@
 import { AccessUnavailable } from "../connections/limited-access.js";
-import { DEFAULT_CHOICE_WORDS, accountChoiceWords, addFavourite, effortChoices, effortName, familyChoices, favouriteCandidates, identityWords, modelDisplayName, modelName, moveFavourite, removeFavourite, type EnvironmentView } from "@agent-harness/client-runtime";
+import { DEFAULT_CHOICE_WORDS, accountChoiceWords, addFavourite, effortChoices, effortName, familyChoices, favouriteCandidates, favouriteModelIds, identityWords, modelDisplayName, modelName, moveFavourite, removeFavourite, type EnvironmentView } from "@agent-harness/client-runtime";
 import { FAVOURITE_MODELS_MAX, settingsRow, type ModelEntry } from "@agent-harness/contracts";
 import { ArrowDown, ArrowLeft, ArrowUp, ChevronDown, Cpu, Gauge, KeyRound, Plus, RefreshCw, Search, Star, X } from "lucide-react";
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -101,7 +101,7 @@ export const DefaultChoices = ({ view }: { readonly view: EnvironmentView }) => 
   const accountListing = runtime.capability(environmentId, "accounts.list");
   const modelListing = runtime.capability(environmentId, "models.list");
   const options = {
-    "accounts.defaultAccount": accounts.map((account) => ({ value: account.id, words: accountChoiceWords(account), under: `${identityWords(account)} · ${account.provider}` })),
+    "accounts.defaultAccount": accounts.map((account) => ({ value: account.id, words: accountChoiceWords(account), identity: identityWords(account), under: account.provider })),
     "accounts.defaultModelFamily": families.map(({ family, model }) => ({ value: family, ...modelWords(model), hasEffort: model.efforts.length > 0, under: model.efforts.length > 0 ? "Supports effort" : "Uses its own effort" })),
     "accounts.defaultEffort": efforts.map((effort) => ({ value: effort, words: effortName(effort), under: "Reasoning effort for new sessions." })),
   };
@@ -149,7 +149,7 @@ const DefaultTrigger = ({ name, stage, words, machine, note, icon: Icon, writabl
 </div>;
 
 interface DefaultOption {
-  readonly value: string; readonly words: string; readonly machine?: string | undefined; readonly under?: string; readonly hasEffort?: boolean;
+  readonly value: string; readonly words: string; readonly identity?: string; readonly machine?: string | undefined; readonly under?: string; readonly hasEffort?: boolean;
 }
 
 /** Defaults reuse run-picker rows, columns and keyboard navigation; writes stay with settings.update. */
@@ -182,7 +182,8 @@ const DefaultColumns = ({ initial, narrow, writable, options, valueOf, save, acc
     return <>
       <RunChoiceRow icon={icon} label={words.unset} selected={value === null} dim={!writable || reason !== undefined} onSelect={() => void select(null)} />
       {value !== null && !all.some((option) => option.value === value) && <RunChoiceRow icon={icon} label={words.missing(value)} selected dim onSelect={() => undefined} />}
-      {shown.map((option) => <RunChoiceRow key={option.value} icon={icon} label={option.words} machine={option.machine} under={option.under}
+      {shown.map((option) => <RunChoiceRow key={option.value} icon={icon} label={option.identity === undefined ? option.words : `${option.words} ${option.identity}`} machine={option.machine} under={option.under}
+        {...(option.identity !== undefined && { primary: option.words, identity: option.identity })}
         selected={option.value === value} dim={!writable || reason !== undefined} onSelect={() => void select(option.value)} />)}
       {state !== undefined && <p className="px-2.5 py-2 text-2xs text-ink-muted">{state}</p>}
       {state === undefined && all.length === 0 && <p className="px-2.5 py-2 text-2xs text-ink-muted">{key === "accounts.defaultAccount" ? "No accounts yet." : key === "accounts.defaultModelFamily" ? "No models are listed yet." : "This model uses its own effort."}</p>}
@@ -233,7 +234,8 @@ interface Touched {
  * edit writes the whole list through `settings.update`, a refused one said
  * in one line; the list and Add a favourite are held until a write is
  * answered, so the next edit starts from what it wrote. A favourite no
- * signed-in account lists stays, said so, until it is removed. Greyed while the environment cannot be reached or without
+ * signed-in account lists stays, said so, until it is removed; one carried
+ * over as `<account>/<model>` is read as the model it names (#1954). Greyed while the environment cannot be reached or without
  * `admin`, whose line the pane says.
  */
 const FavouriteModels = ({ view }: { readonly view: EnvironmentView }) => {
@@ -248,7 +250,7 @@ const FavouriteModels = ({ view }: { readonly view: EnvironmentView }) => {
   const add = useRef<HTMLButtonElement>(null);
   const section = useRef<HTMLDivElement>(null);
   const touched = useRef<Touched | undefined>(undefined);
-  const favourites = (settings.values?.["accounts.favouriteModels"] as readonly string[] | undefined) ?? [];
+  const stored = (settings.values?.["accounts.favouriteModels"] as readonly string[] | undefined) ?? [];
   useLayoutEffect(() => {
     const last = touched.current;
     if (last === undefined || saving) return;
@@ -260,13 +262,15 @@ const FavouriteModels = ({ view }: { readonly view: EnvironmentView }) => {
     const buttons = [...(row?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
     const adding = add.current?.disabled === false ? add.current : undefined;
     (buttons.find((button) => button.dataset["edit"] === last.edit) ?? buttons[0] ?? adding ?? section.current)?.focus();
-  }, [favourites, saving]);
+  }, [stored, saving]);
   if (settings.values === null) return null;
   const writable = view.phase === "ready" && runtime.capability(environmentId, "settings.update").status === "present" && !saving;
   // Each model the signed-in accounts list, as the first account listing it names it.
   const signedIn = new Set(accounts.filter((account) => account.status.state === "signed-in").map((account) => account.id));
   const listed = new Map<string, ModelEntry>();
   for (const entry of catalogues.filter((catalogue) => signedIn.has(catalogue.accountId)).flatMap((catalogue) => catalogue.models)) if (!listed.has(entry.id)) listed.set(entry.id, entry);
+  // Read as the model ids they name, so a favourite carried as `<account>/<model>` shows its model, and the next edit writes the ids.
+  const favourites = favouriteModelIds(stored, listed);
   const candidates = favouriteCandidates(catalogues, accounts, favourites);
   const full = favourites.length >= FAVOURITE_MODELS_MAX;
   const accountLabel = (id: string) => accounts.find((account) => account.id === id)?.label ?? id;

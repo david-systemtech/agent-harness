@@ -47,7 +47,7 @@ const opened = async (desk: Partial<ScriptedEnvironment> = {}, others: readonly 
   );
   await app.user.click(await screen.findByRole("button", { name: "Begin set up" }));
   await screen.findByRole("region", { name: "Set up" });
-  if (options.on !== undefined) await app.user.selectOptions(within(checklist()).getByRole("combobox", { name: "Environment" }), options.on);
+  if (options.on !== undefined) await app.user.selectOptions(within(checklist()).getByRole("combobox", { name: "Setting up" }), options.on);
   await app.user.click(railStep("Forges"));
   return app;
 };
@@ -61,7 +61,7 @@ const openAdd = async (app: RenderedApp, environment = "desk") => {
 describe("the Forges step's card", () => {
   it("is registered for the Forges step: where it stands, then a row per forge account", async () => {
     await opened({ forges: { accounts: [{}] } });
-    expect(within(step()).getByRole("button", { name: "Open Forges" })).toBeDefined();
+    expect(within(step()).getByRole("button", { name: "Open in Settings" })).toBeDefined();
     expect(await row("https://github.com")).toBeDefined();
   });
 });
@@ -220,7 +220,7 @@ describe("the gh paths", () => {
     expect(JSON.stringify(app.platform.documents.entries())).not.toContain("gh-token-for-tests");
 
     // This machine's environment reads the same gh as its own: the hand-over is not offered there.
-    await app.user.selectOptions(within(checklist()).getByRole("combobox", { name: "Environment" }), "desk");
+    await app.user.selectOptions(within(checklist()).getByRole("combobox", { name: "Setting up" }), "desk");
     await app.user.click(railStep("Forges"));
     const onDesk = await openAdd(app);
     expect(within(onDesk).queryByRole("button", { name: "Use the gh signed in on this computer" })).toBeNull();
@@ -273,7 +273,7 @@ describe("the gh paths", () => {
     expect(within(add).queryByRole("button", { name: "Use this machine's gh" })).toBeNull();
     await app.user.click(within(add).getByRole("button", { name: "Cancel" }));
 
-    await app.user.selectOptions(within(checklist()).getByRole("combobox", { name: "Environment" }), "laptop");
+    await app.user.selectOptions(within(checklist()).getByRole("combobox", { name: "Setting up" }), "laptop");
     await app.user.click(railStep("Forges"));
     const onLaptop = await openAdd(app, "laptop");
     expect(await within(onLaptop).findByText("The gh on laptop is 2.30.0, older than 2.40.0, the oldest a forge account reads.")).toBeDefined();

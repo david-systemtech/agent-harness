@@ -91,7 +91,7 @@ describe("the Account card in Set up", () => {
     const next = () => within(step()).getByRole("button", { name: "Continue" });
     const work = await within(step()).findByRole("region", { name: "work" });
     expect(next().hasAttribute("disabled")).toBe(true);
-    expect(within(step()).getByText("Continue once an account is signed in.")).toBeDefined();
+    expect(within(step()).getByText("Sign in to continue. Account is the one required step.")).toBeDefined();
     expect(within(step()).getByRole("button", { name: "Skip for now" }).hasAttribute("disabled")).toBe(true);
 
     await app.user.click(within(work).getByRole("button", { name: "Sign in again" }));
@@ -102,7 +102,8 @@ describe("the Account card in Set up", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(within(step()).getByText("work is signed in on desk.")).toBeDefined();
     await waitFor(() => expect(next().hasAttribute("disabled")).toBe(false));
-    expect(within(step()).queryByText("Continue once an account is signed in.")).toBeNull();
+    expect(within(step()).queryByText("Sign in to continue. Account is the one required step.")).toBeNull();
+    expect(within(step()).getByText("Account is the one required step.")).toBeDefined();
     await app.user.click(next());
     expect(within(checklist()).getByRole("region", { name: "Carry over" })).toBeDefined();
   });
@@ -112,10 +113,10 @@ describe("the Account card in Set up", () => {
     await screen.findByText("No session is open. Choose one from the sidebar.");
     await app.user.keyboard("{Control>},{/Control}");
     const settings = await screen.findByRole("region", { name: "Settings" });
-    await app.user.click(within(within(settings).getByRole("region", { name: "Set up" })).getByRole("button", { name: "Open the full checklist" }));
+    await app.user.click(within(within(settings).getByRole("region", { name: "Set up" })).getByRole("button", { name: "Open Set up" }));
     await within(step()).findByText("No account is held here.");
     expect(within(step()).getByRole("button", { name: "Continue" }).hasAttribute("disabled")).toBe(true);
-    expect(within(step()).getByText("Continue once an account is signed in.")).toBeDefined();
+    expect(within(step()).getByText("Sign in to continue. Account is the one required step.")).toBeDefined();
   });
 
   it("is read-only without admin, with the capability's line said once", async () => {
@@ -204,7 +205,7 @@ describe("the Account card's defaults", () => {
     // The idle time is the row's, not the step card's.
     expect(within(defaults()).queryByRole("group", { name: "Stop idle agent processes after minutes" })).toBeNull();
 
-    await pickDefault(app, "Default account", "work");
+    await pickDefault(app, "Default account", "work not read yet");
     await waitFor(() => expect(desk.settings()["accounts.defaultAccount"]).toBe("account-2"));
     await pickDefault(app, "Model family", "claude-sonnet-5");
     await waitFor(() => expect(desk.settings()["accounts.defaultModelFamily"]).toBe("sonnet"));

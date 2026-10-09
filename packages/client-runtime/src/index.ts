@@ -3,7 +3,9 @@ export { PROTOCOL_VERSION } from "@agent-harness/contracts";
 
 export { createRuntime, type Runtime } from "./runtime.js";
 export { CredentialAccessUnansweredError, isCredentialAccessUnanswered, PairingCodeSpentError, StoredCredentialUnavailableError } from "./credential-unavailable.js";
+export { SERVICE_FAILURE_KINDS, ServiceFailureError, serviceFailureOf, type ServiceFailure, type ServiceFailureKind } from "./service-failure.js";
 export { derived, writable, type Observable, type Writable } from "./observable.js";
+export { onLocalDayChange } from "./local-day.js";
 /** The id a client mints for a session or a group it creates (the contracts' `SessionId` and `GroupId` are version 4), and for a command (version 7). */
 export { uuidv4, uuidv7 } from "./ids.js";
 export type {
@@ -222,6 +224,8 @@ export type {
   AccountPresetReason,
   BrowserChip,
   BrowserPresetReason,
+  EffortChip,
+  EffortPresetReason,
   EnvironmentChip,
   EnvironmentOption,
   EnvironmentPresetReason,
@@ -546,6 +550,7 @@ export {
   elapsedClock,
   gaugeOf,
   identityWords,
+  modelChoiceWarning,
   modelChoiceWords,
   modelDisplayName,
   modelName,
@@ -586,6 +591,7 @@ export {
   handingOffWords,
   setSessionContainment,
   setSessionMode,
+  setSessionModel,
   type AdminOutcome,
   type ContainmentSet,
   type HandOff,
@@ -600,6 +606,7 @@ export {
   labelProblem,
   sendSignInCode,
   signInEnd,
+  signInFailed,
   signInLeftWords,
   startSignIn,
   type AccountAdded,
@@ -628,6 +635,7 @@ export {
   RECOMMENDED_MODELS,
   addFavourite,
   favouriteCandidates,
+  favouriteModelIds,
   moveFavourite,
   pickerModels,
   pinWords,
@@ -641,7 +649,11 @@ export {
   DENYLIST_TEST_KIND_NAMES,
   NOTHING_TO_REVIEW,
   DECIDED_BECAUSE,
-  availabilityWords,
+  MODE_WORDS,
+  PROMPT_TIMEOUT_CHOICES,
+  SANDBOX_LEVEL_WORDS,
+  isTimeout,
+  promptTimeoutChoices,
   reviewCountsWords,
   reviewDenialWords,
   reviewRanWords,
@@ -649,6 +661,11 @@ export {
   sectionGrammar,
   sectionHasPresets,
   sectionHolds,
+  sandboxReadiness,
+  sandboxSetup,
+  type CommandToCopy,
+  type PromptTimeoutChoice,
+  type SandboxSetup,
 } from "./permissions/words.js";
 export {
   editedSection,

@@ -4,6 +4,7 @@ import {
   NO_WINDOWS_READ,
   gaugeWho,
   listedReadingsOf,
+  onLocalDayChange,
   pooledWords,
   resetWords,
   silentLimitsWords,
@@ -13,11 +14,11 @@ import {
   type UsageGauge,
 } from "@agent-harness/client-runtime";
 import { settingsRow, type AccountUsage } from "@agent-harness/contracts";
-import { useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useReducer } from "react";
 import { nameOf } from "../connections/words.js";
 import { afterReach, reachWords } from "../settings/generic-editor.js";
 import { WindowReading } from "../status/window-reading.js";
-import { useObservable, useRuntime } from "../window-context.js";
+import { useClock, useObservable, useRuntime } from "../window-context.js";
 
 /**
  * Usage, `accounts.usage` (docs/specs/gui.md, "Settings"; ADR 0005, ADR
@@ -33,6 +34,13 @@ import { useObservable, useRuntime } from "../window-context.js";
  */
 export const UsagePane = () => {
   const runtime = useRuntime();
+  const clock = useClock();
+  const [, redraw] = useReducer((tick: number) => tick + 1, 0);
+  useEffect(() => {
+    const timer = onLocalDayChange(clock, redraw);
+    return () => timer.cancel();
+  }, [clock]);
+  const now = clock.now();
   const usage = useObservable(runtime.projections.usage);
   const views = useObservable(runtime.projections.environments);
   return (
@@ -40,7 +48,7 @@ export const UsagePane = () => {
       <p className="text-2xs leading-relaxed text-ink-faint">{settingsRow("accounts.usage").hint}</p>
       {usage.gauges.length === 0 && <p className="text-sm text-ink-faint">{NO_PLAN_READING}</p>}
       <SettingsCardGrid>{usage.gauges.map((gauge) => (
-        <Gauge key={gauge.accounts.map(({ environmentId, accountId }) => `${environmentId} ${accountId}`).join(" ")} gauge={gauge} views={views} />
+        <Gauge key={gauge.accounts.map(({ environmentId, accountId }) => `${environmentId} ${accountId}`).join(" ")} gauge={gauge} views={views} now={now} />
       ))}</SettingsCardGrid>
       {usage.environments.map((answer) => (
         <EnvironmentLine key={answer.environmentId} answer={answer} view={views.find((view) => view.environmentId === answer.environmentId)} />
@@ -50,7 +58,7 @@ export const UsagePane = () => {
 };
 
 /** One gauge: who it pools, the accounts it pools, and its windows (unknown limits that say nothing only counted) or why it has none. */
-const Gauge = ({ gauge, views }: { readonly gauge: UsageGauge; readonly views: readonly EnvironmentView[] }) => {
+const Gauge = ({ gauge, views, now }: { readonly gauge: UsageGauge; readonly views: readonly EnvironmentView[]; readonly now: Date }) => {
   const heading = useId();
   const { readings, silent } = listedReadingsOf(gauge);
   return (
@@ -68,7 +76,7 @@ const Gauge = ({ gauge, views }: { readonly gauge: UsageGauge; readonly views: r
       {readings.length > 0 && (
         <ul aria-label="Windows" className="flex flex-col gap-1 text-sm text-ink">
           {readings.map((reading) => {
-            const reset = resetWords(reading.resetsAt);
+            const reset = resetWords(reading.resetsAt, now);
             return (
               <li key={reading.window} className="flex flex-wrap items-center gap-2">
                 <span className="w-20">{`${windowWords(reading.window)} `}</span>

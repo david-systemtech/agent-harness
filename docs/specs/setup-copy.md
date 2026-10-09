@@ -74,7 +74,11 @@ the list is at the end).
   now, Continue (Finish set up on step 11). Cross-step fixes move inside Set up ("Go to Forges") rather than to Settings.
 - **Status line.** A state word with its icon (Done, Needs a fix, Not set up, Checking, Not checked yet), then the line. A line
   that needs a fix is a notice (§1.14) with the fix buttons in place and Details. "Open in Settings" (ExternalLink icon, with the
-  visible hint "Leaves Set up") replaces "Open {row}".
+  visible hint "Leaves Set up") replaces "Open {row}". Any other button that leaves Set up for Settings says so in its label:
+  `{its words} (leaves Set up)`. One **Check again**, whether or not the result offers it. A needs-a-fix notice takes the warning
+  tone (the state's amber); a check or a start that did not run takes the error tone. An action's outcome is a notice too:
+  information when it went ahead, the error tone with the refusal mapper's line when refused; a refused tool's own command sits
+  inside its Details under `Or run this yourself on {computer}:`, in mono with Copy.
 - **Details and Copy details.** Details shows the check ids, the environment's raw words (`details` on the result), and when it
   was checked. Copy details copies:
   `agent-harness {app version} on {platform}` / `Computer: {name} (agent-harness {version})` / `Step: {label} ({step id}): {state}` /
@@ -128,6 +132,7 @@ The welcome block ("Welcome to agent-harness", the lede and the two intro cards)
 | installing (first start) | `Installing agent-harness on this computer…` | `This happens once and takes about a minute.` | — |
 | ready | `agent-harness is ready on this computer.` | `Choose Begin set up.` | **Begin set up** |
 | failed: no service in this app | `agent-harness cannot start on this computer.` | `This copy of the app is missing a part. Reinstall agent-harness.` | Details, **Connect to another computer** |
+| failed: the app's service will not run | same title | `This copy of the app has a part that will not run. Reinstall agent-harness.` | Details, **Connect to another computer** |
 | failed: install | same title | `Installing the background service did not work. Choose Try again.` | **Try again**, Details |
 | failed: start | same title | `The background service did not start. Choose Try again.` | **Try again**, Details |
 | failed: no answer in 60 s | same title | `The background service started but did not answer. Choose Try again.` | **Try again**, Details |
@@ -136,13 +141,19 @@ The welcome block ("Welcome to agent-harness", the lede and the two intro cards)
 | unavailable (no service in this app, e.g. a browser tab) | `This app cannot run agent-harness itself.` | `Connect it to a computer that runs agent-harness.` | **Connect to another computer** (replaces the raw `no-shell`) |
 | stopped | `agent-harness is not running on this computer.` | `Choose Start.` | **Start** |
 | reconnecting | `Reconnecting to agent-harness on this computer…` | `This happens by itself.` | — |
-| stopping (no update under way) | `agent-harness is stopping on this computer…` | `Choose Start once it has stopped.` | — (today this reads "restarting for an update") |
-| blocked / disabled | the block's plain line (§3 patterns) | its one fix | its fix button |
+| stopping (draining, no update under way) | `agent-harness is stopping on this computer…` | `Choose Start once it has stopped.` | — (today this reads "restarting for an update") |
+| restarting for an update this app knows of or the environment announced (`bye: updating`, from any client), or waiting on macOS's prompt for the saved key | the connection's own line (the update's progress, the prompt's, or `{name} is restarting for an update…`) | — | — |
+| disabled on this client | the connection's own line, `{name} is disabled on this client.` | — | — |
+| blocked | the block's plain line (§3 patterns) | its one fix | its fix button |
 
 - "Begin set up" keeps its label in every state; while disabled the visible line beneath says `Available once agent-harness is ready.`
-- "Pair instead" becomes **Connect to another computer**; "I'll set up later" stays.
+- "Pair instead" becomes **Connect to another computer**; "I'll set up later" stays. It is the one Connect to another computer
+  button on the page, beside Begin set up, in every state; the table's states that name it point at that button.
+- When the home is another computer that is ready and this one is not, a line beneath the description says
+  `{name} is ready. Choose Begin set up.`
 - "Start details" becomes **Details** with Copy details; the desktop's failure text is its content (desktop/src/service.ts gives a
-  `kind`: no-artefact, unrunnable, install, start, status, no-answer, plus the raw text).
+  `kind`: no-artefact, unrunnable, install, start, status, no-answer, plus the raw text). A failure that carries no kind takes the
+  kind of the step the window was on (reading the service's state, installing it, starting it).
 
 ### 4.2 Pairing dialog (gui/src/connections/pairing.tsx; also Your machines › Add a device)
 Title `Connect to another computer`. Description `Paste the pairing link from the other computer.` Hint (visible, below the field):
@@ -184,6 +195,7 @@ Words stay: `Leave set up without an account?` / `You can look around, but you w
 - No computer picked: `Choose a computer to set up.`; still loading: `Reading {name}'s setup…`.
 - Footer: **Back**, **Skip for now**, **Continue**; step 11 **Finish set up**. On Account, Skip and Continue are disabled and the
   visible line beside them reads `Sign in to continue. Account is the one required step.`
+  Once an account is signed in, Continue is enabled and Skip stays disabled, so the line reads `Account is the one required step.`
 
 ### 4.5 Settings › Set up pane (setup-pane.tsx) and header chip (setup-line.tsx)
 - Counts: `{d} done · {n} need a fix · {s} not set up` (`· {p} checking` while any). One-word forms: `1 needs a fix`.
@@ -296,6 +308,27 @@ quoted from the files named; a builder greps for them.
 | report headings `Carried`, `Re-enter`, `Arriving in milestone 2`, `Not carried` | `Brought over`, `Needs you`, `Not supported yet`, `Not brought over` |
 | `Client-local values applied/not applied` + `…local grant…` | `Window preferences` · `Applied to this window.` / `These apply only on {name}'s own computer.` |
 | `{label}: {raw store message}` failures; labels with doc paths or issue numbers | plain label + Details; no repository paths or issue numbers on screen |
+
+- Earlier work, the words the table leaves open (#1845). `{counts in words}` names each kind above zero (`2 accounts, 1 memory bank,
+  3 routines, 4 instructions, 2 skill collections, 1 key manager`, then `your terminal history` when that folder is found); Details holds
+  the folders' paths and `The list of {kind} could not be read.` for a list that is there but unreadable. A preview with nothing new:
+  `There is nothing new to bring over. Nothing has been changed yet.`; `Brought over` then the counts, or `Everything is already here.`
+  `Needs you` lists what must be entered again, each with **Go to {step}**, then the failed items (an alert, `Error: ` hidden, each
+  `{label}: {line}`). A forge that is connected but refused: `Your forge {host} could not open this skill collection. Check its token in
+  Forges.` → **Go to Forges**. An SSH source no forge serves: `{host} did not let this computer in over SSH. Check this computer's SSH
+  key and its known-hosts entry for {host}.` Details: the refusal. A branch or pinned commit the repository no longer holds (git's
+  not found names the branch or ref, not the repository): `Its branch or pinned version is no longer there.`, no step. A connected
+  forge that answers not found for the repository itself (its token may not see a private one) gets the token line above. A skill collection that cannot be added otherwise: not found
+  `agent-harness found no such repository or branch. If it is private, connect a forge for {host}.` → **Go to Forges** (without
+  `If it is private…` when the address names no host); no answer `Its host did not answer in time. Choose Bring it over to try
+  again.`; no usable skill `It holds no skills agent-harness can use.`; anything else `agent-harness could not add this skill
+  collection.`; each with git's or the Skills owner's words in Details. An unreadable store: `agent-harness could not read this part of your
+  earlier work.` Details: its diagnostic. A skill collection is labelled by its repository's name (`Skill collection {name}`), the
+  repository and folder in Details. Two profiles sharing a projects folder: `{label} and {owner} share one projects folder, so their
+  chats and notes come over once, with {owner}.` Details: their source ids. Window preferences read `Theme`, `Text size` (`(was {n})`
+  when clamped), `Reading width`, `Show thinking`, `Last open in Settings: {row label}`; a preview says neither applied line. Refusals are
+  the mapper's (§3): `no_source` `No earlier work is on this computer any more.`; `import_in_progress` `Bringing over is under way
+  already. Wait for it to finish.`
 
 ### 5.4 Your machines (gui/src/machines/your-machines-card.tsx, reachability.tsx; environment/src/updates/*, setup/state-checks.ts)
 - Title `Use agent-harness from other devices?` Why `Reach this computer's agents from your phone or another computer.`
@@ -493,12 +526,16 @@ quoted from the files named; a builder greps for them.
 ### 5.10 Instructions (gui/src/instructions/*; environment/src/instructions/*)
 - Title `Tell every agent how you work`. Why `Instructions are notes every agent reads before it starts.`
 - What is this? `agent-harness already tells agents about this computer: your accounts, forges and notebooks. You can add your own notes too.`
-- Controls: `Your note` (About my setup) with **Edit**; `Suggestions` as ticks with one line each; **Write your own**; fold
+- Controls: `Your note` (About my setup, then each note written with Write your own) with **Edit**; `Suggestions` as ticks with
+  one line each, a ticked one with `Added. Change or remove it in Settings › Instructions.`; **Write your own**; fold
   `What agents are told about this computer` holding the preview and the switch `Tell agents about this computer` with
   `If you turn this off, agents will not know where your forges, keys and notebooks are.`
-- Owned instruction lists, move up/down and account reach stay in Settings › Instructions.
+- Owned instruction lists, move up/down and account reach stay in Settings › Instructions. Its part for the block is titled
+  `What agents are told about this computer` with the same switch, warning and unread line, and no account reads the no-account line.
 - Lines: done `Agents get your notes and a summary of this computer.`; unread `agent-harness could not read part of this computer's setup: {step names}.`
-  with **Go to {Step}** per name (environment→Your machines, accounts→Account, key-managers→Key manager, forges→Forges, banks→Memory bank, other-environments→Your machines);
+  with **Go to {Step}** per name (environment→Your machines, accounts→Account, key-managers→Key manager, forges→Forges, banks→Memory bank, other-environments→Your machines),
+  each step once in Set up's order; a part this version does not know names no step, and with none named the line ends at `setup.`;
+  Details: `Unread sections of the orientation block: {section ids}`;
   no account `Sign in on the Account step first. Agents are told about your accounts.`
 
 ### 5.11 Browser (gui/src/browser/*; environment/src/browser/*)
@@ -511,33 +548,64 @@ quoted from the files named; a builder greps for them.
   4. `Choose Load unpacked, paste the folder location and confirm.` Ticked: `Chrome found the extension.`
   5. (shown once step 4 ticks) `Choose the agent-harness extension's icon, then Options, and type this code:` {CODE} `{m} min left` (renews by itself; no Stop box)
   6. Optional: `Sites you are building` textarea, hint `One site per line, like localhost:3000. Agents may run scripts on these sites.`
-  - **Use my Chrome for agents** (was Done); disabled line `Pair Chrome first (step 5).`; after `Agents now use your Chrome.`
+  - **Use my Chrome for agents** (was Done); disabled line `Pair Chrome first (step 5).`; after `Agents now use your Chrome.`,
+    or, when every account already has a browser chosen and nothing was written, `Every account already has a browser chosen, so nothing changed.` (#1857)
 - The listening address, the ports and the browser glossary go in Details / fold `How agents use Chrome`.
 - Lines: skip `Chrome is not connected. Optional.`; done `Chrome is connected.`; closed `Chrome is closed, so agents cannot use it. Open Chrome. This updates by itself.`
   (Unpair is in More options, not offered as the fix); old extension `The Chrome extension is out of date. In chrome://extensions, choose reload on agent-harness.` **Copy chrome://extensions**;
   ports busy `Chrome cannot reach agent-harness because the ports it needs are busy. Close other apps, then restart agent-harness.` Details;
   files missing `The extension's files are missing from this install. Reinstall agent-harness.` Details; phone or web `Connecting Chrome works only in the desktop app.`
+  The two the code needs beside these (#1857): the listener down for a reason other than busy ports `Chrome cannot reach agent-harness. Restart agent-harness.` Details;
+  the desktop app with agent-harness not running on this computer `agent-harness is not running on this computer, so Chrome cannot connect to it.`
+- Each step's tick is named `Step {n}: done` or `Step {n}: not done yet`. Steps 1 and 2 tick on their Copy, 1 to 4 once Chrome found the extension;
+  step 5's code is minted only then, while no Chrome is paired or after Pair another (More options), and 6 ticks on this visit's save.
+  After Pair another, a Chrome already paired ticks nothing: 1 to 4 tick once Chrome finds the new, unpaired extension, and stay ticked once it pairs.
 
 ### 5.12 Permissions (gui/src/permissions/*; environment/src/permissions/*; contracts/src/settings.ts descriptions)
 - Title `Choose when agents ask you`. Why `This is the most any session may do without asking. A session can always ask more often.`
-- Choices (labels; the mode id goes to Details):
+- Choices (labels; the mode id goes to Details), under `How much agents may do without asking` (the setting's label, its description the why line):
   - `Ask before any change` `Agents can read and plan. They ask before changing anything.`
   - `Edit files, ask for the rest` (badge `Recommended`) `Agents can edit files in your project. They ask before running commands.`
   - `Let Claude decide` `Claude reviews each action and asks you only when it is unsure.` (where the provider supports it)
   - `Never ask` (warning tone) `Agents act without asking. Use it only for trusted work in a sandbox.`
-- More options `More safety settings`: `For scheduled and automatic runs` (same four); `If nobody answers a question` `Deny it after` 1 hour / 24 hours / 2 days / `Never deny it`;
-  `Sandbox` `Off` / `Project folder` / `Project folder, no internet`, each `Works here` or `Needs setup` with fold `How to set it up` (the OS's command, copyable, then **Restart agent-harness**);
+- More options `More safety settings`: `For scheduled and automatic runs` (the same words, for the two modes that setting takes: `Edit files, ask for the rest`, `Never ask`;
+  #1858: the unattended mode's schema takes no other); `If nobody answers a question` `Deny it after` 1 hour / 24 hours / 2 days / `Never deny it`
+  (a value set elsewhere, such as `30 minutes`, shows first as a choice of its own, chosen);
+  `Sandbox` `Off` / `Project folder` / `Project folder, no internet`, each `Works here` or `Needs setup` (`Not checked yet` until read) with fold `How to set it up` (the OS's command, copyable, then **Restart agent-harness**);
   `Always-ask list` (the four lists) and `Test the always-ask list`. The read-only "Permission bypass acknowledged" field is not shown.
+  - The always-ask list's own words: `Agents always ask you before they use anything on these lists, whatever you chose above. On scheduled runs, nobody is there to answer, so the answer is no.`;
+    an entry's tag `built-in`; a list's **Restore built-in entries**, asking `Restore the missing built-in entries of {list}?` (naming none: `Restore the always-ask list's missing built-in entries?`)
+    `Each missing built-in entry goes back at the end of its list, turned on. Entries you edited or turned off stay as they are.` **Cancel** / **Restore**;
+    done `Put back {n} built-in entries.` (`Put back 1 built-in entry.`); not read `agent-harness could not read the always-ask list.` Details.
+  - How to set it up and How to fix it, by the probe's cause (client-runtime/src/permissions/words.ts): bubblewrap or socat missing `Install bubblewrap and socat, the two programs the sandbox uses on Linux.`
+    with `On Ubuntu or Debian` `sudo apt-get install bubblewrap socat`, `On Fedora` `sudo dnf install bubblewrap socat`, `On Arch Linux` `sudo pacman -S bubblewrap socat`;
+    On macOS, a missing built-in sandbox says `This Mac is missing its built-in sandbox. Choose Off, or use a computer with a working sandbox.` (no install or restart command).
+    A failed macOS probe says `macOS could not start its built-in sandbox. Check Details, then restart agent-harness to check again. If it still does not work, choose Off or use a computer with a working sandbox.`
+    with the restart command below, and no Linux package commands. The computer's reported operating system selects these cases; older reports naming Seatbelt are handled too.
+    AppArmor `Ubuntu needs a rule that lets the sandbox start. Add it with this command.` `Add the rule` (the bwrap profile written to /etc/apparmor.d/bwrap and loaded);
+    the kernel `Linux has turned off the user namespaces the sandbox needs.` `Turn them on` (a sysctl.d file, then `sudo sysctl --system`);
+    a container's seccomp `The container's security profile stops the sandbox. Start the container with a seccomp profile that allows user namespaces.`;
+    another failure on Linux `The sandbox did not start here. On Linux, install bubblewrap and socat; on Ubuntu, also add the rule.` with those commands;
+    no mechanism `This computer has no sandbox agent-harness can use. On Windows, run agent-harness in WSL2 to use one.`; the agent `The agent this computer runs cannot use a sandbox.`;
+    not probed `agent-harness has not checked the sandbox here yet.` Each that something on the computer fixes ends `Then restart agent-harness, which checks the sandbox as it starts:`
+    with `agent-harness service stop && agent-harness service start` (a container: `docker compose restart environment`) to copy, until this app can restart its service
+    (#1858: no client restarts the service yet, so **Restart agent-harness** is that command until the button exists, #1988).
 - Lines: done `Set. Agents {are not sandboxed | stay inside the project folder | stay inside the project folder, offline}.` (+ ` You emptied the {section} always-ask list.`);
-  sandbox unavailable `The sandbox you chose does not work on this computer yet.` **Turn the sandbox off** · fold `How to fix it` Details: the probe;
-  presets missing `Some built-in entries are missing from the {section} always-ask list.` **Restore them**; root as §5.4.
+  sandbox unavailable `The sandbox you chose does not work on this computer yet.` **Turn the sandbox off** · fold `How to fix it` Details: the probe (`permissions.containment.default: {level}`, `Probe: {reason}`, `Cause: {cause}`, `What it printed: {detail}`);
+  presets missing `Some built-in entries are missing from the {section} always-ask list.` (several: `from the {a}, {b} and {c} always-ask lists.`) **Restore them** Details: `{section}: {n} built-in entries are missing: {three} and {n} more.` or `{section}: holds none of its built-in entries, and no person emptied it.`; root as §5.4.
 - Messages: `Not saved: The containment level {x} cannot be enforced here: …` → `This sandbox does not work on this computer yet. See How to set it up.`;
+  any other refusal of a change on the card is the refusal mapper's line as an error, the environment's words in Details;
   the bypass dialog title `Never ask on scheduled runs?` body `Agents will act without asking and can do anything your account can, inside the sandbox you chose.` **Never ask** / **Cancel**.
+- Setting labels and descriptions (contracts/src/settings.ts): `How much agents may do without asking` (the why line); `For scheduled and automatic runs` `How much scheduled and automatic runs may do without asking, unless they choose for themselves. Never ask needs your agreement first.`;
+  `If nobody answers a question` `How long an agent's question waits for your answer before it is denied and the run goes on. With Never deny it, the provider may still stop waiting.`;
+  `Sandbox` (§2's sentence); the agreement's time `Agreed to never ask on scheduled runs` `When you agreed that scheduled runs may act without asking. It is recorded when you agree.`
 
 ### 5.13 Appearance (gui/src/appearance/*; environment/src/appearance/contrast.ts)
 - Title `Choose how the window looks`. Why `You can change this any time.`
 - `Light or dark` `Match my computer` (pre-selected) / `Light` / `Dark` with `This applies to this device only.`; `Theme` Default / Ember / Lagoon as swatches.
 - More options `Customise colours`: seeds named `Background`, `Accent`, `Code`, `Thinking`, `Success`, `Warning`, `Danger`, sliders `Colour` and `Strength`; Save, Import, Export.
+- With no edits, Save and Cancel are disabled beside `Choose a theme or customise colours before saving.`; a write says `Saving your theme…`.
+- The detailed `Colour preview` names its swatches `Light colours` / `Dark colours` and its list `Adjusted colours`. Adjustments read `text readability`, `visibility of controls`, `screen colour limits` or `distinct colours`, with `Light mode`, `Dark mode` or `Light and Dark mode`. The theme file keeps its existing seed keys.
 - Lines: done `Your theme is easy to read.`; adjusted `Some colours in {theme} were adjusted so text stays readable.` **Use the Default theme**, which asks
   `Use the Default theme? Your colour changes to {theme} will be lost.` **Use Default** / **Keep {theme}**.
 
