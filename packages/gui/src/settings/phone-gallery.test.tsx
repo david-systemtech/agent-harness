@@ -15,7 +15,7 @@ it.each(["constrained", "full", "setup", "picker", "qr"] as const)("phone Settin
   expect(gallery.world.shell).toBeUndefined();
   if (kind === "constrained") expect(screen.getByRole("button", { name: "Give this phone full access" })).toBeDefined();
   if (kind === "full" || kind === "qr") expect(screen.getByRole("link", { name: "Open the sign-in page" })).toBeDefined();
-  if (kind === "full" || kind === "qr") expect(screen.getByRole("img", { name: "QR code of the provider sign-in page" })).toBeDefined();
+  if (kind === "full" || kind === "qr") expect(screen.getByRole("img", { name: "QR code of the Claude sign-in page" })).toBeDefined();
   if (kind === "picker") {
     const picker = screen.getByRole("dialog", { name: "New-session defaults" });
     expect(picker.closest("[data-settings-dialog]")).toBeNull();
@@ -26,7 +26,8 @@ it.each(["constrained", "full", "setup", "picker", "qr"] as const)("phone Settin
   }
   if (kind === "setup") {
     expect(screen.getByRole("heading", { name: "Bring over your past work", level: 2 })).toBeDefined();
-    expect(await screen.findByText("New sessions")).toBeDefined();
-    expect(screen.queryByText(/The inventory could not be read/)).toBeNull();
+    expect(await screen.findByText("Project account with a long descriptive label: 24 past chats, 7 notes folders, 7 skills.")).toBeDefined();
+    expect(screen.queryByText(/could not look at/)).toBeNull();
+    expect(screen.queryByText("Everything is already here.")).toBeNull();
   }
 });

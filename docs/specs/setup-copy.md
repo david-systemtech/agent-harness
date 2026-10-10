@@ -181,6 +181,11 @@ Field `Pairing link` (no example value as placeholder), button **Pair**; **Scan 
 | `Not paired: macOS asked … then Try again.` / `… this one was used.` | `Your Mac's question was not answered, so pairing stopped. Choose Always Allow, then Try again.` / `… then make a new code: this one was used.` |
 | `Not paired: {thrown}` / `Not scanned: {thrown}` | `Pairing did not work. Try again.` / `The QR code could not be read. Paste the link instead.` Details |
 | `{name} is this machine's local environment: it connects through its grant, with no code.` | `That link is for this computer. This app is already connected to it.` |
+| `That code is for {x}, not {y}.` (pairing {y} again) | `That code is for {x}, not {y}. Make a new code on {y}.` |
+| `This device cannot keep a client session token: the OS keeps no key for it now. Unlock or set up the system keychain, then pair again.` | `This device has no safe place to keep the connection. Unlock or set up its keychain, then pair again.` Details |
+| `Full access could not be confirmed. Use a full-access code made for Me. …` (Give this phone full access) | Unchanged. Details: what the code granted and what the new connection holds |
+| `The environment that answered is {x}, not the one its address named.` | `That address reaches a different computer than the one that made the code. Make a new code and try again.` Details |
+| `Use the environment's HTTPS pairing link or HTTPS address. HTTP connections are unavailable in the browser.` | `Use the other computer's HTTPS pairing link or HTTPS address. This page cannot connect over HTTP.` Details: the address |
 
 ### 4.3 Close dialog (gui/src/setup/checklist-window.tsx)
 Words stay: `Leave set up without an account?` / `You can look around, but you will need to sign in before starting a session. Set up will be waiting in Settings.` / **Keep setting up** / **Leave for now**. In the full checklist, it asks about the accounts on the computer shown in the header, matching the Account gate and Continue (#2018). On the introduction, which has no computer picker, it asks about the home computer's accounts.
@@ -290,21 +295,54 @@ quoted from the files named; a builder greps for them.
 | `{label} is signed in on {env}.` + Done | `{label} is signed in.` **Done** |
 | `Sign in again` disabled with `Finish or cancel the open sign-in first.` | stays |
 
+Added when the dialog was built (#1843), where the lines above did not reach the code:
+- Each end that is not a success or a person's cancel (a refused code, a failed CLI, an expiry, a cancel the system made) keeps
+  the dialog open as a notice (§1.14): its first sentence is the title, the second the description, then **Start again** and
+  Details (`Details:` the environment's own words). The footer's **Cancel the sign-in** becomes **Close**, which says nothing
+  more where the dialog was opened. A code agent-harness refused before the CLI saw it ends the sign-in that waited for it, and
+  Start again signs the same account in afresh.
+- A code that got no answer (no answer in time, a lost link: a failure the app met itself, not agent-harness's refusal) does not
+  end the sign-in, since agent-harness may already be checking it: the dialog stays on its steps with the mapper's line by
+  the code field (§3 patterns), and follows the sign-in to its end.
+- When the account was removed: `The sign-in stopped because {label} was removed.` (no Start again; an information notice).
+- `{m}` in `{m} min left` is whole minutes rounded up; from one minute down it reads `Less than a minute left.`
+- A start refused without the holder's name (an older agent-harness): `Another sign-in is running. Finish or cancel it first.`
+- A refused cancel: `The sign-in was not cancelled.` then the mapper's line (§3 patterns).
+- Details while it waits: `What we saw: Waiting for the code from the Claude page.` and `Sign-in page: {link}`.
+- A link too long for a QR: `This link is too long for a QR code. Choose Copy link instead.` The QR's name for screen readers:
+  `QR code of the Claude sign-in page`.
+- A copy the system refused (Copy link, the command's **Copy**): `Could not copy. Select the text and copy it manually.` with the
+  text in a field to select.
+- The terminal UI's account picker has no Start again: it says only the end's first sentence, and shows the link as text,
+  since a terminal cannot copy it for you.
+- §5.1's `{label} is added. Its sign-in did not start…` row, its other causes: the computer cannot sign Claude in there,
+  `{label} is added. agent-harness cannot sign it in on that computer. Sign in with Claude Code there instead.`; no reason given
+  (an older agent-harness), `{label} is added. Its sign-in did not start. Choose Sign in again.`
+
 ### 5.3 Carry over (gui/src/carry-over/*; environment/src/carry-over/step-checks.ts)
 - Title `Bring over your past work`. Why `Your old Claude Code chats and notes can come with you.`
 - What is this? `agent-harness can copy your past Claude Code chats, notes and skills from this computer. Nothing is deleted or changed where they came from.`
 - Nothing found: `Nothing to bring over from this computer.` + `You can continue.` (state Not set up; no other text on the card).
-- Found: one summary sentence per Claude Code sign-in: `{label}: {n} past chats, {m} notes folders, {k} skills.` and one primary
-  **Bring them over** (all accounts and the earlier-work import together; skills ticked). Counts per kind sit in fold `What will come over`.
+- Found: one summary sentence per Claude Code sign-in: `{label}: {n} past chats, {m} notes folders, {k} skills.` (singular for 1; skills
+  counts skill folders and command files) and one primary **Bring them over** (all accounts, and the earlier-work import the first time,
+  before any account has been brought over, or after it stopped; a re-run would apply its window preferences again). The tick beside it, shown while there are skills, reads
+  `Bring over skills too`, on. Counts per kind sit in fold `What will come over`, per account: `Past chats`, `New chats`, `Notes folders`,
+  `Skills`. While reading: `Looking for past work…`.
 - Fold `What will not come over` holds the list: `Your Claude Code settings, hooks and plugins`, `Personal MCP servers and permission rules`,
   `Subagents`, `Prompt history`, `Repository trust` and the line `Claude Code keeps all of these. You can set them up again in agent-harness when you need them.`
-- After: `Brought over {n} chats and {m} notes folders.`; nothing new: `Everything is already here.`; later new chats: **Bring over {n} new chat(s)** (singular for 1).
+- After: `Brought over {n} chats and {m} notes folders.`; nothing new: `Everything is already here.` (said once: not when the step's line
+  already says it); later new chats: **Bring over {n} new chat(s)** (singular for 1). What did not come over from an account is a notice
+  `{n} items from {label} did not come over.` `Choose Try again.` with the list in Details, and the one primary reads **Try again** until a
+  run brings the rest (also when the step names an account whose last import failed part way). Skills with a problem stay where they are,
+  so Try again would not bring them: `1 skill from {label} has a problem, so it stays where it is.` / `{n} skills from {label} have a
+  problem, so they stay where they are.` with the list in Details. A refusal is the mapper's line (§3).
 - Earlier work found in a folder (state import): `Earlier work found in {folder name}: {counts in words}.` **Preview** (was Dry run) and **Bring it over**.
   Preview result: `This would bring over: {counts}. Nothing has been changed yet.` + **Bring it over**.
 - Lines: skip `Nothing to bring over from this computer.`; found `Found earlier work you can bring over: {counts}.`; done `Brought over {when}.`;
   never imported `{label} has past chats to bring over. Choose Bring them over.`; unreadable `agent-harness cannot open {label}'s Claude Code folder.
   Check that it still exists, then choose Check again.` Details: path and error; part failed `{n} items from {label} did not come over. Choose Try again.`
-  Details: the list; earlier-work stopped `Bringing over your earlier work stopped before the end. Choose Continue bringing it over.`;
+  (`1 item` for one) Details: the list; earlier-work stopped `Bringing over your earlier work stopped before the end. Choose Continue bringing it over.`
+  (the card's **Continue bringing it over**; Details: the folder; the step's target for it is labelled `Your earlier work`);
   earlier-work partial `{n} items from your earlier work did not come over. See what to do below each one.`;
   default waits `Your default account waits for {label} to sign in. Choose Sign in {label}.` (opens §5.2 in place); running `Bringing your earlier work over now…`.
 
@@ -314,11 +352,12 @@ quoted from the files named; a builder greps for them.
 | `Past work found in {path}: … Not brought over yet.` | `Found earlier work you can bring over: {counts}.` |
 | `Import` / `Import {n} new sessions` / `Import again: {label}` | **Bring them over** / **Bring over {n} new chat(s)** / (one button only) |
 | `No new sessions.` | `Everything is already here.` |
-| `The inventory could not be read: {msg}` / `The accounts could not be read: {msg}` | `agent-harness could not look at {label}'s past work. Choose Check again.` Details |
+| `The inventory could not be read: {msg}` / `The accounts could not be read: {msg}` | `agent-harness could not look at {label}'s past work. Choose Check again.` Details (the accounts: `agent-harness could not look at your past work.`) |
+| `No account {id} is on this environment.` / `The account {id} has a directory of the environment's own, …` / `An import of the account {id} is under way.` (refusals) | `This account is not on this computer.` / `This account has no Claude Code folder to bring over.` / `Bringing over past work is under way already. Wait for it to finish.` (the id in the refusal's data) |
 | (nothing while loading) | `Looking for past work…` |
-| `Unmappable memory: {path}` + `Choose a repository` + `Assign memory: …` | `Notes from {project folder name} do not match a project here. Choose the project they belong to:` select · **Use for these notes** |
+| `Unmappable memory: {path}` + `Choose a repository` + `Assign memory: …` | `Notes from {project folder name} do not match a project here. Choose the project they belong to:` select (`Choose a project`) · **Use for these notes**; then `These notes now belong to {project}.` |
 | `No repository identities on this environment yet.` | `Bring your chats over first. Then you can choose a project for these notes.` |
-| `{name}: {url}, {folder}; branch …` + `Track as a source` | `{name} is a skills folder from {host}.` **Keep it up to date** Details: url, branch |
+| `{name}: {url}, {folder}; branch …` + `Track as a source` | `{name} is a skills folder from {host}.` **Keep it up to date** Details: url, branch; then `agent-harness keeps {name} up to date now.` |
 | `The harness copy of the skills is now the one to edit.` | only after skills came over: `Your skills now live in agent-harness. Edit them there.` |
 | `Provider sign-in does not grant access to private skill repositories. …` (50 words, every failure) | per failed item, its own fix: `Connect a forge for {host}` → **Go to Forges**; `Skill {name} is missing` → **Go to Skills**; else Details |
 | report headings `Carried`, `Re-enter`, `Arriving in milestone 2`, `Not carried` | `Brought over`, `Needs you`, `Not supported yet`, `Not brought over` |
@@ -354,9 +393,16 @@ quoted from the files named; a builder greps for them.
   - `Your other devices cannot reach this computer yet. Install Tailscale here and on your other devices.` **Get Tailscale** (opens tailscale.com/download) **Check again**
   - `Tailscale is installed but not connected. Open Tailscale and sign in, then choose Check again.`
   - `Tailscale is ready. Restart agent-harness to use it.` **Restart agent-harness** where the service can restart, else `It is used from the next start.`
+  - and, when `Use Tailscale` is off, which no install helps: `Use Tailscale is off in More options, so your other devices cannot reach this computer.`
+  - once the Wi-Fi network switch is applied, where Tailscale is not bound and no Tailscale address waits for a restart: `Devices on this Wi-Fi network can reach this computer. To reach it from anywhere else, use Tailscale.`
+  - **Check again** under every line but the first; it reads how the computer is reached again.
+  - on Windows, under every line but the first and the Use Tailscale one: `Windows asks once whether Node.js may accept connections. Keep Private networks ticked and choose Allow access.` (#1910)
+  - **Restart agent-harness** (this computer's own service, from the desktop app) drains it and starts it again; meanwhile `{name} is restarting.`;
+    if it does not: `agent-harness did not restart on {name}.` `Choose Restart agent-harness to try again.` Details: the refusal;
+    where it stopped and did not start again, `Choose Start to try again.` (Restart cannot drain what is not running; the checklist's Start can), and that notice goes once it runs again.
   - then **Add a device** (§5.5).
-- More options: name, icon and colour; switch `Use Tailscale` with `On: agent-harness uses Tailscale whenever it is installed.` (the switch is preset on, so it must not read as "Tailscale is working"); switch `Also allow devices on this Wi-Fi network` with `Anyone on this network could try to connect. They still need a pairing code.`;
-  updates (`Update automatically`, channel `Stable` / `Beta`); link **All settings for this computer** (Settings › Your machines; leaves Set up).
+- More options: name, icon and colour; switch `Use Tailscale` with `On: agent-harness uses Tailscale whenever it is installed.` (the switch is preset on, so it must not read as "Tailscale is working"); switch `Also allow devices on this Wi-Fi network` with `Anyone on this network could try to connect. They still need a pairing code.` (it uses the computer's first local network address; choosing another is Settings'; with none, the switch is off and held, and says `This computer is not on a local network.`);
+  updates (`Update automatically`, `Channel` `Stable` / `Beta`); link **All settings for this computer** (Settings › Your machines; leaves Set up).
   Browser origins, the sandbox list and the grant note are not on this card. A limited pairing shows one line `This app has limited access to {name}.` with **What does this mean?** (#1631's sheet).
 - Lines: done `{name} is ready. It updates itself.` / `{name} is ready. Automatic updates are off.` / `{name} is ready. The host's updater keeps it up to date.` /
   pinned `{name} is ready. It stays on version {v}.`, and while the pin does not run yet (its update waits for idle, or never comes) `{name} is ready. It runs version {v0} and is pinned to {v}.`; restarting within its 30 minutes `{name} is restarting.` and the same second sentence; Details: `Version: {v0}` (the running version), `Updates: {on | off | pinned to {v} | by the host's updater}`, and `Tailscale address: {ip} ({tailnet name})`, `Local network address: {ip}` or `Reachable from: this computer only`;
@@ -387,19 +433,24 @@ quoted from the files named; a builder greps for them.
 - Part 1 `Connect a phone or computer to this one`. Question `Who is it for?`
   - `Me` (pre-selected) `Your own phone or computer. It can do everything you can do here.`
   - `A phone with limited access` `It can chat with agents and answer their questions. It cannot open terminals or change settings. Agents on it edit files but ask before anything else.`
-  - `A program or bot` `A tool such as a bot. It can start and follow sessions but not change settings.` + `How much may its agents do without asking?` (§5.10's four choices)
+  - `A program or bot` `A tool such as a bot. It can start and follow sessions but not change settings.` + `How much may its agents do without asking?` (§5.12's four choices)
   - More options › `Custom` with ticks `See sessions` / `Start and organise sessions` / `Run agents and answer their questions` / `Use terminals, files and changes` / `Change settings and sign in accounts` and the four choices.
+    With nothing ticked, beside the dimmed button: `Tick at least one thing it can do.`
   - **Make a pairing code** → `On the new device, open agent-harness and choose Connect to another computer. Scan this code or paste the link.`
     QR · `Pairing link` with Copy · fold `Type it instead`: `Address {host:port}` · `Code {CODE}` · `This code works once, for 10 minutes. {m} min left.`
     Expired: `This code has run out.` **Make a new code**.
     While this computer is reachable only from itself, above the button: `Other devices cannot reach this computer yet, so they cannot use a code made now. Set up Tailscale first.`
     and a code made anyway never offers a 127.0.0.1 link to another device; its line reads `This code only works on this computer.` A dimmed choice says why in words: `This app itself has limited access, so it cannot give more.`
+    A code that could not be made: `Something went wrong. Choose Make a pairing code to try again.` Details: the refusal. Before this computer has answered:
+    `This app has not reached agent-harness on this computer yet.`
 - Part 2 `Connect this app to another computer`: the pairing form of §4.2.
 - Part 3 `Install agent-harness on another computer`: numbered steps `1. On the other computer, open a terminal.` `2. Copy the line for its system and paste it.`
   `3. When it finishes, it shows a pairing link. Paste it in Part 2.` Lines `Mac or Linux`, `Windows (PowerShell)` with Copy; fold `Using Docker or Podman?`
   with: `1. Make a folder for it and open a terminal there.` `2. Copy this line and paste it.` `3. The pairing link appears in the container's log.`
-  `4. To keep it up to date, set up the host updater.` **How to set up the updater**. A token line, where the release needs one, goes in that fold.
-  Name field `Name for the new computer (optional)`.
+  `4. To keep it up to date, set up the host updater.` **How to set up the updater**. A private release's token line sits under the numbered steps,
+  above the lines, since every line reads the token: `This release is private. Before you paste a line, set AGENT_HARNESS_TOKEN to a token that can read it.`
+  Name field `Name for the new computer (optional)`. While the release is read: `Checking which version to install…`; when it cannot be:
+  `This app cannot tell which version to install yet.` Details: why.
 
 ### 5.6 Forges (gui/src/forges/*; environment/src/forge/*)
 - Title `Connect GitHub or another forge`. Why `Agents can then open pull requests and read your private code.`
@@ -437,6 +488,18 @@ quoted from the files named; a builder greps for them.
   `The token for {host} cannot list organisations. Create a new token with that permission and add it.` (a refused token, a server error and no answer read as above, what the forge answered in Details);
   a token an older build recorded as another user's reads `The token for {host} belongs to another user, not {login}. Add a token for {login}.`, its old line in Details.
 - **Move to your key manager** shows only while a key manager is connected, as **Keep this token in your key manager**.
+- Words the card needs beyond these (#1849): looking the site up again is **Check address**, `Checking…` while it is on its way, and a site found
+  reads `{site} runs {kind}.`; the field's hint is `For example https://github.com/you/project`; Add with no token says `Paste the token here.`, and
+  an address that names no site `Enter an address like https://github.com/you/project.`; the plain list names what the token page shows: a fine-grained
+  GitHub token `All repositories, with Contents: Read and write, …`, a classic one its scopes (`repo and read:org`), Forgejo and Gitea each area
+  with `Read` or `Read and write`; an add answers `{login} on {host} is connected.`, or `{login} on {host} is added.` when the row then shows a problem;
+  **Make main** answers `{login} on {host} is your main forge. New notebooks go there.`; a problem's button is **Add token** for a forge copied with
+  no token and **Add a new token** for the rest; the capability list is `What the token can do`; under `Other addresses for this site` the field is
+  `Another address for this site` with **Add address**, answering `{alias} is another address for {login} on {host}.` or `{alias} did not answer. It is
+  used once it answers as {login}.`, and refusing `{alias} is this site's own address.`, `{alias} is already another address for this site.` or, empty,
+  `Enter the other address.`; gh signed out shows its command in mono with Copy (`The command to run there`); a hand-over whose gh fails rather than
+  being signed out reads `The gh tool did not give a token for {host}.`, gh's own cause in Details; an address that names no site is said once typing
+  pauses, and Enter before the kind is known checks the address.
 
 ### 5.7 Key manager (gui/src/key-managers/*; environment/src/key-managers/*)
 - Title `Use a key manager?` Why `If you keep passwords and keys in one, agents can fetch them when they need them.`
@@ -536,20 +599,59 @@ quoted from the files named; a builder greps for them.
   computer is missing.`; its copy for describing `agent-harness could not get {bank} ready to describe. Choose Describe it to try again.`
   A conversation a step does not have `This step has no conversation to start.`; its subject gone `What this conversation was for is no longer here. Choose Check again.`
 - Badges on a notebook: `Personal` / `Team`, `On` / `Off`, `On this computer only` / `On {host}`; the rest in Details. `Manifest: {state}` becomes `Description: ready / missing / has a problem / waiting for approval`.
+- Words the card needs beyond the list above (#1853; the card had them in older words, or none):
+  ready-to-go row while forges are connected but none is main, `Choose your main forge. New notebooks go there.` **Go to Forges** (§5.6's line); outside Set up **Go to Forges** opens
+  Settings › Forges. The team form's empty fields read `Enter a team name.` / `Enter a repository name.` / `Enter a first organisation.` / `Enter the first projects.`, its
+  unpicked forge and owner `Choose a forge.` / `Choose the owner from the list.`, each beside its own field; the join form's empty link `Enter a notebook link.` on **Preview**. A notebook that cannot be reached shows **Check again** beside its line on its card (it verifies that notebook), and a forge-account line always comes with **Go to Forges**. `Now describe your notebook. …` shows while the notebook has no description; once a
+  conversation exists, **Describe it** opens it again, and a conversation that ended without saving reads `Stopped`. Who describes it: `Account`, `Model`, `Effort` with
+  `No signed-in account`, `No model to choose` and `This computer's usual effort`. Try again with no conversation: `There is no conversation to continue. Choose Start again.`
+  A notebook's card: `Working on it…`; `Reading your notebooks…`; **Sync all** / **Sync** / **Turn on** / **Turn off** / **Remove**, a disabled one's reason beside it
+  (`Turn on a notebook to sync it.`, `Turn on {bank} to sync it.`); kept here `{bank} is on this computer only. Move it to your forge to use it on other computers too.`
+  **Move to your forge**, without a main forge `Choose your main forge before you move this notebook to it.` **Go to Forges**; an old copy of the rules
+  `{bank} uses an older copy of the notebook rules.` **Update the rules** (held: `Turn on {bank} first.`, `You can look at {bank} but not change it.`,
+  `An update is already waiting for your approval.`), then `The rules are up to date.` / `The rules were up to date already.`, or the saving-failed line with Details;
+  read-only `You can look at {bank} but not change it.`; off `Turn on {bank} so agents use it.`; a forge account another computer holds, beside the environment's line,
+  `Your {host} account is connected on {computer}, not here. Connect it here too.` **Go to Forges**; the review `Saved. Waiting for your approval on {host}.` (the
+  description) or the reviewed-change line above, each with **Open the review**. Remove: `Remove {bank}?` `Agents will stop using it. Its folder stays on this computer,
+  and its repository on the forge is kept.` **Cancel** · **Remove notebook**. Details: who may change it, default for, how it signs in, its folder and repository, accounts,
+  repositories, last sync, its notes and folders, the rules' version, and the description's rule with its message, missing orientation notes and unknown owners.
+  The preview's region is `Notebook preview`; its Details hold the organisations, entities, orientation, review rules and read and push access. A team notebook's
+  link to share is `Notebook link`. Every refusal is its plain line with Details (`plainRefusal` for one the environment does not word here).
 
 ### 5.9 Skills (gui/src/skills/skills-card.tsx, sources.tsx; environment/src/skills/*)
 - Title `Add ready-made skills`. Why `Skills are guides agents can follow, like reviewing code or writing tests.`
 - Catalogue: each card `{title}` `{one-line pitch}` `{n} skills` **Add** (added: `Added` with **Remove**); fold `Details`: licence, `Changes often`, size, the skill list.
   `You can follow up to 20 collections.` shows once, above the list, from 15 on.
+  In Details: `Licence: {spdx or none}, {LICENSE file | said in the skill's SKILL.md | said in the README | not stated}`; size
+  `{skill} can be always on: about {n} tokens on every run. Choose it in Settings › Skills.`; each skill `{name}: {description}`.
 - More options › `Add from a link`: `Repository address` **Look for skills** → `Found {n} skill folders:` ticks **Add selected**.
-- Skill members, always-on switches and repository trust are not in Set up (Settings › Skills, link **All skill settings**).
+  While looking: `Looking for skills…`. One folder: `Found 1 skill folder:`. Each tick `{folder} · {n} skills` (the repository's own
+  name for its top folder). Add selected with nothing ticked is greyed beside `Choose a skill folder first.`; a look that stopped early
+  `agent-harness stopped looking after 2,000 folders, so there may be more.`; after adding `Added {collection}.`
+- A collection is named by its catalogue title, else by its repository's path on its host, with `({folder})` when it is not the top folder.
+- Skill members, always-on switches and repository trust are not in Set up (Settings › Skills, link **All skill settings**, with the
+  visible hint `Leaves Set up`).
 - Lines: skip `No skills added. Optional.`; done `Your skills are up to date.` (own only: `Your own skills are ready.`); after Update now `{collection} is up to date.`;
   update failed `{collection} could not update. Choose Update now.`; out of date `{collection} has not updated for over 7 hours. Choose Update now.`;
   moved `{collection} no longer has skills where they were. Choose its folders again.` (card button **Choose folders**);
+  pinned with no skills `{collection} has no skills at its pinned version. Open All skill settings to change its folders or version.` (the pin is changed explicitly in Settings);
   too many `You follow {n} collections. The limit is 20. Remove {n-20}.`; own folder `agent-harness cannot open your own skills folder. Check that it exists.` Details.
 - Probe messages: not an address `Enter the address of a repository, like https://github.com/you/skills.` (never "The params are not skills.probe's");
   git missing `Git is not installed on {computer}. Install Git, then try again.` (from spawn ENOENT); private `This repository is private. Add a forge for {host} first.` **Go to Forges**; missing `agent-harness found no repository at this address.`;
   slow `{host} did not answer in time. Try again.`; none `No skill folders were found there.`; all with Details for git's words.
+  Git failing any other way: `agent-harness could not read this repository. Try again.` (#1855: the probe's fifth cause had no line).
+- Add refusals (#1855: the add's refusals reached the card in the environment's own words): already followed `You already follow
+  this collection.`; at the limit `You can follow up to 20 collections. Remove one first.`; a folder with no skills `There are no skills
+  in {the folder {folder} | this repository}.` or, when its skills have problems, `The skills in {…} cannot be used.`, then
+  `These folders have skills: {folders}.` when others do.
+- A new Look for skills result clears the folder ticks; Add selected only sends folders in that result.
+  During an add batch, Look for skills is disabled and Enter in the address field cannot start a new look, so the batch's refusal stays visible.
+- Update now with no collection to update: `There is no collection to update.` Choose folders looks for a branch-following collection's folders
+  again (`Found {n} skill folders:` …, **Cancel**); Add selected adds the chosen ones and removes the moved collection.
+  Cancel stays disabled while that batch is running, through its adds and removal. At
+  the limit, or when the original folder is selected again, it removes the moved collection first; when an add after that is refused, the card keeps
+  `{collection} was removed to make room for its new folders.` beside the refusal, after **Cancel** too. A refusal part way
+  (here or in Add from a link) puts `Added {collection}.` for each folder already added in front of it.
 - "Pull now" reads **Update now** everywhere in Set up.
 
 ### 5.10 Instructions (gui/src/instructions/*; environment/src/instructions/*)
@@ -610,15 +712,16 @@ quoted from the files named; a builder greps for them.
     with `On Ubuntu or Debian` `sudo apt-get install bubblewrap socat`, `On Fedora` `sudo dnf install bubblewrap socat`, `On Arch Linux` `sudo pacman -S bubblewrap socat`;
     On macOS, a missing built-in sandbox says `This Mac is missing its built-in sandbox. Choose Off, or use a computer with a working sandbox.` (no install or restart command).
     A failed macOS probe says `macOS could not start its built-in sandbox. Check Details, then restart agent-harness to check again. If it still does not work, choose Off or use a computer with a working sandbox.`
-    with the restart command below, and no Linux package commands. The computer's reported operating system selects these cases; older reports naming Seatbelt are handled too.
+    with the restart action below, and no Linux package commands. The computer's reported operating system selects these cases; older reports naming Seatbelt are handled too.
     AppArmor `Ubuntu needs a rule that lets the sandbox start. Add it with this command.` `Add the rule` (the bwrap profile written to /etc/apparmor.d/bwrap and loaded);
     the kernel `Linux has turned off the user namespaces the sandbox needs.` `Turn them on` (a sysctl.d file, then `sudo sysctl --system`);
     a container's seccomp `The container's security profile stops the sandbox. Start the container with a seccomp profile that allows user namespaces.`;
     another failure on Linux `The sandbox did not start here. On Linux, install bubblewrap and socat; on Ubuntu, also add the rule.` with those commands;
     no mechanism `This computer has no sandbox agent-harness can use. On Windows, run agent-harness in WSL2 to use one.`; the agent `The agent this computer runs cannot use a sandbox.`;
     not probed `agent-harness has not checked the sandbox here yet.` Each that something on the computer fixes ends `Then restart agent-harness, which checks the sandbox as it starts:`
-    with `agent-harness service stop && agent-harness service start` (a container: `docker compose restart environment`) to copy, until this app can restart its service
-    (#1858: no client restarts the service yet, so **Restart agent-harness** is that command until the button exists, #1988).
+    with **Restart agent-harness** where this app can drain and start this computer's own service; while it restarts, `Restarting…`.
+    Once it is ready again, read the sandbox report and check Permissions again. A paired computer, the web, or a service this app cannot restart keeps
+    `agent-harness service stop && agent-harness service start` (a container: `docker compose restart environment`) to copy.
 - Lines: done `Set. Agents {are not sandboxed | stay inside the project folder | stay inside the project folder, offline}.` (+ ` You emptied the {section} always-ask list.`);
   sandbox unavailable `The sandbox you chose does not work on this computer yet.` **Turn the sandbox off** · fold `How to fix it` Details: the probe (`permissions.containment.default: {level}`, `Probe: {reason}`, `Cause: {cause}`, `What it printed: {detail}`);
   presets missing `Some built-in entries are missing from the {section} always-ask list.` (several: `from the {a}, {b} and {c} always-ask lists.`) **Restore them** Details: `{section}: {n} built-in entries are missing: {three} and {n} more.` or `{section}: holds none of its built-in entries, and no person emptied it.`; root as §5.4.

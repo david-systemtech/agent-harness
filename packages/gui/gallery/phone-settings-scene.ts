@@ -56,7 +56,7 @@ export const phoneSettingsScene = (kind: "constrained" | "full" | "setup" | "pic
         }
         const code = document.querySelector<HTMLInputElement>("[data-account-sign-in] input");
         if ((kind === "full" || kind === "qr") && providerReady && code) {
-          const qr = document.querySelector('[aria-label="QR code of the provider sign-in page"]');
+          const qr = document.querySelector('[aria-label="QR code of the Claude sign-in page"]');
           if (qr === null) return;
           (kind === "qr" ? qr : code.closest("form"))?.scrollIntoView({ block: "nearest" });
           code.closest("[data-account-sign-in]")?.setAttribute("data-phone-sign-in-ready", "");
@@ -68,7 +68,7 @@ export const phoneSettingsScene = (kind: "constrained" | "full" | "setup" | "pic
       advance();
       return () => observer.disconnect();
     },
-    readySelector: kind === "picker" ? '[aria-label="New-session defaults"] [role="menuitem"]' : kind === "constrained" ? "[data-phone-grant-guidance]" : (kind === "full" || kind === "qr") ? "[data-phone-sign-in-ready]" : '[data-phone-setup] [data-count-grid][aria-label="Sessions"]',
+    readySelector: kind === "picker" ? '[aria-label="New-session defaults"] [role="menuitem"]' : kind === "constrained" ? "[data-phone-grant-guidance]" : (kind === "full" || kind === "qr") ? "[data-phone-sign-in-ready]" : '[data-phone-setup] [data-carry-over-found]',
     geometry: ({ width, height }) => kind === "setup" ? [
       { selector: "[data-phone-setup]", width, height },
       { selector: '[aria-label="Step navigation"] button', minimumHeight: 44, minimumWidth: 44, visibleWithin: "[data-phone-setup]" },
@@ -78,7 +78,7 @@ export const phoneSettingsScene = (kind: "constrained" | "full" | "setup" | "pic
       { selector: "[data-settings-dialog]", width, height, visibleWithin: "body" },
       { selector: "[data-settings-dialog] button", renderedOnly: true, minimumHeight: 44, minimumWidth: 44 },
       ...(kind === "picker" ? [{ selector: '[aria-label="New-session defaults"] [role="menuitem"]', renderedOnly: true, minimumHeight: 44, minimumWidth: 44, visibleWithin: '[aria-label="New-session defaults"]' }] : []),
-      ...(kind === "qr" ? [{ selector: '[aria-label="QR code of the provider sign-in page"]', minimumWidth: 176, minimumHeight: 176, visibleWithin: "[data-settings-scroll]" }] : []),
+      ...(kind === "qr" ? [{ selector: '[aria-label="QR code of the Claude sign-in page"]', minimumWidth: 176, minimumHeight: 176, visibleWithin: "[data-settings-scroll]" }] : []),
       ...(kind === "full" ? [{ selector: "[data-account-sign-in] input", minimumHeight: 44, visibleWithin: "[data-settings-scroll]" }, { selector: '[data-account-sign-in] form[aria-label="Send the code"] button[type="submit"]', minimumHeight: 44, visibleWithin: "[data-settings-scroll]" }, { selector: "[data-account-sign-in] a", minimumHeight: 44 }] : []),
     ],
   };

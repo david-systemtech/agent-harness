@@ -1,6 +1,6 @@
-import { DEFAULT_THEME, CATALOGUE, CATALOGUE_SEED_INSTRUCTION_ID, type BankJoinPreview, type CarryOverInventory, type ContainmentReport, type ResultOf, type StepId, type StepResult } from "@agent-harness/contracts";
+import { DEFAULT_THEME, CATALOGUE, CATALOGUE_SEED_INSTRUCTION_ID, type BankJoinPreview, type CarryOverInventory, type CarryOverReport, type ContainmentReport, type EnvironmentBinding, type ResultOf, type SkillsView, type StepId, type StepResult } from "@agent-harness/contracts";
 import { MANUAL_CLOCK_START } from "@agent-harness/client-runtime/testing";
-import type { EnvironmentHandle, ScriptedEnvironment, ScriptedSetup } from "@agent-harness/client-runtime/testing/scripted-environment";
+import type { EnvironmentHandle, ScriptedEnvironment, ScriptedForges, ScriptedSetup } from "@agent-harness/client-runtime/testing/scripted-environment";
 import type { LadderName } from "@agent-harness/theme";
 import { useEffect, useState } from "react";
 import { App } from "../src/app.js";
@@ -26,9 +26,18 @@ export const joinPreview: BankJoinPreview = {
 /** A step's status at the head of its card (setup-copy.md §3; #1840): done, needing a fix with Details open, a check that could not run, and the environment out of reach. */
 type StatusRegion = "status-done" | "status-fix" | "status-could-not-check" | "status-unreachable";
 
-type SetupRegion = StepId | "appearance-default" | "bank-preview" | "authoring" | "close-confirmation" | "sign-in" | "host-updater" | "rail-states" | "instructions-unread" | "permissions-sandbox" | StatusRegion | AccountRegion | KeyManagerRegion | BrowserRegion;
+type SetupRegion = StepId | "appearance-default" | "bank-preview" | "authoring" | "close-confirmation" | "sign-in" | "sign-in-refused" | "host-updater" | "carry-over-nothing" | "carry-over-after" | "rail-states" | "instructions-unread" | "skills-link-refusal" | "permissions-sandbox" | "permissions-sandbox-paired" | StatusRegion | ForgesRegion | AccountRegion | KeyManagerRegion | BrowserRegion | "machines-tailscale" | "machines-unreachable";
+
+const isSandbox = (kind: SetupRegion): boolean => kind === "permissions-sandbox" || kind === "permissions-sandbox-paired";
 
 const isStatus = (kind: SetupRegion): kind is StatusRegion => kind.startsWith("status-");
+
+/** setup-copy.md §5.4: how desk is reached in the Your machines scenes that answer "Also from my other devices" (#1846); every address is invented. */
+const MACHINES_BINDING: Partial<Record<SetupRegion, EnvironmentBinding>> = {
+  "machines-tailscale": { tailnet: { address: "198.51.100.7", name: "desk.tail1234.ts.net" }, lan: null, lanAddresses: ["192.0.2.20"] },
+  "machines-unreachable": { tailnet: null, tailnetFound: null, tailscaleInstalled: false, lan: null, lanAddresses: ["192.0.2.20"] },
+};
+
 
 /** setup-copy.md §5.1's Account states beyond the empty one (#1842): Claude Code found and signed in, an account signed in, one signed out. */
 type AccountRegion = "account-claude-code" | "account-signed-in" | "account-signed-out";
@@ -81,6 +90,25 @@ const BROWSER_RESULTS: { readonly [Kind in BrowserRegion]: Partial<StepResult> }
   "browser-code": { state: "skipped", reason: "Chrome is not connected. Optional." },
   "browser-closed": { state: "needs-attention", reason: "Chrome is closed, so agents cannot use it. Open Chrome. This updates by itself.", failing: ["browser.chrome-connected"], actions: ["check-again"] },
 };
+
+/** setup-copy.md §5.6's Forges states (#1849): gh offered first, the add form at its token steps, and a site detection cannot recognise. */
+type ForgesRegion = "forges-gh" | "forges-add" | "forges-unknown";
+
+/** What each Forges state's environment holds of forges; every value is invented. */
+const FORGES: { readonly [Region in ForgesRegion]: ScriptedForges } = {
+  "forges-gh": {
+    login: "maintainer",
+    accounts: [{ origin: "https://git.example.test", kind: "forgejo" }],
+    gh: { installed: true, version: "2.63.2", meetsMinimum: true, accounts: [{ host: "github.com", login: "maintainer", active: true, tokenKind: "oauth", scopes: ["repo", "read:org"] }] },
+  },
+  "forges-add": { login: "maintainer" },
+  "forges-unknown": { login: "maintainer", detect: { "https://code.example.test": "not_a_forge" } },
+};
+
+/** The address each add-form state types, as a person would. */
+const TYPED: Partial<Record<SetupRegion, string>> = { "forges-add": "https://git.example.test/team/project", "forges-unknown": "https://code.example.test/team/project" };
+
+const isForges = (kind: SetupRegion): kind is ForgesRegion => kind in FORGES;
 
 /** setup-copy.md §5.4: a container no host updater has polled, its line offering How to set it up (#1883). */
 const NEVER_POLLED: Partial<StepResult> = {
@@ -151,6 +179,32 @@ const RAIL_STATES: ScriptedSetup = {
   "key-manager": null,
 };
 
+/** setup-copy.md §5.3: a computer with nothing to bring over (#1844). */
+const NOTHING_TO_BRING: Partial<StepResult> = { state: "skipped", reason: "Nothing to bring over from this computer.", failing: [], actions: [] };
+
+/** What Bring them over reports in the after scene: the chats and notes it brought, one chat left behind, and skills copied. */
+const broughtOver = (accountId: string): CarryOverReport => ({
+  accountId, dryRun: false,
+  sessions: { listed: 24, imported: 23, archived: 6, missingDirectory: 2, held: 0 },
+  memory: { folders: [{ folder: "-work-project", path: "/accounts/project/projects/-work-project/memory", key: "https://forge.example.test/team/project", outcome: "copied", under: null, digest: `sha256:${"0".repeat(64)}` }], unmappable: [] },
+  skills: { accountId, dryRun: false, copied: [{ kind: "skill", name: "review", from: "/accounts/project/skills/review", path: "skills/review" }], kept: [], offered: [], invalid: [], notCarried: [] },
+  failed: [{ providerSessionId: "0199aa00-0000-4000-8000-000000000051", message: "Its working directory relative/work is not an absolute path on this environment." }],
+});
+
+/** setup-copy.md §5.9: one catalogue collection added, so the catalogue shows Add, and Added with Remove (#1855); every value is invented. */
+const SKILLS_ADDED: SkillsView = {
+  ownDirectory: "/home/gallery/skills/own", choices: [], accountId: "project", accounts: [{ accountId: "project", channel: "system-prompt-append", reason: null }], members: [],
+  sources: [{
+    id: "0f8fad5b-d9cb-469f-a165-70867728950e", url: "https://github.com/theclaymethod/unslop", identity: "https://github.com/theclaymethod/unslop", folder: ".",
+    follow: { kind: "branch", branch: null }, position: 1, addedBy: { kind: "client_session", id: "desk" }, addedAt: "2026-10-08T09:00:00.000Z",
+    commit: "c".repeat(40), skillCount: 1, sync: { outcome: "ok", since: "2026-10-08T09:00:00.000Z" }, attemptedAt: "2026-10-08T09:00:00.000Z",
+  }],
+};
+
+/** setup-copy.md §5.9: Add from a link refused for a computer with no git, git's words for Details (#1855). */
+const NO_GIT = { error: { code: "conflict", message: "Git is not installed on desk. Install Git, then try again.", data: { reason: "unreachable", problem: "git_missing", line: "spawn git ENOENT", origin: "https://git.example.test" } } };
+const LINK = "https://git.example.test/team/procedures";
+
 /** A provider's authorize link at its real length, which once printed over eight lines (#1690); every value is invented. */
 export const SIGN_IN_URL = "https://provider.example.test/oauth/authorize?code=true&client_id=client-for-gallery&response_type=code"
   + "&redirect_uri=https%3A%2F%2Fprovider.example.test%2Foauth%2Fcode%2Fcallback&scope=org%3Acreate_api_key+user%3Aprofile+user%3Ainference+user%3Asessions"
@@ -158,15 +212,19 @@ export const SIGN_IN_URL = "https://provider.example.test/oauth/authorize?code=t
 
 /** Full checklist, real cards and a frozen scripted environment; look.md §12 and §13. */
 async function prepareRegion(kind: SetupRegion) {
-  const target: StepId = kind === "appearance-default" ? "appearance" : kind === "bank-preview" || kind === "authoring" ? "memory-bank" : kind === "close-confirmation" || kind === "sign-in" || ACCOUNT_REGIONS.has(kind) ? "account" : kind === "host-updater" ? "your-machines" : kind === "rail-states" || showsKeyManagers(kind) ? "key-manager" : kind === "instructions-unread" ? "instructions" : kind === "permissions-sandbox" ? "permissions" : isStatus(kind) ? "skills" : isBrowserRegion(kind) ? "browser" : kind as StepId;
+  const signIn = kind === "sign-in" || kind === "sign-in-refused";
+  const target: StepId = kind === "appearance-default" ? "appearance" : kind === "bank-preview" || kind === "authoring" ? "memory-bank" : kind === "close-confirmation" || signIn || ACCOUNT_REGIONS.has(kind) ? "account" : kind === "host-updater" || kind === "machines-tailscale" || kind === "machines-unreachable" ? "your-machines" : kind === "carry-over-nothing" || kind === "carry-over-after" ? "carry-over" : kind === "rail-states" || showsKeyManagers(kind) ? "key-manager" : kind === "instructions-unread" ? "instructions" : isSandbox(kind) ? "permissions" : kind === "skills-link-refusal" || isStatus(kind) ? "skills" : isBrowserRegion(kind) ? "browser" : isForges(kind) ? "forges" : kind as StepId;
   const keyManagerRegion = showsKeyManagers(kind);
   const status = isStatus(kind) ? STATUS_RESULTS[kind] : undefined;
+  const binding = MACHINES_BINDING[kind];
   const accountState = kind in ACCOUNT_STATES ? ACCOUNT_STATES[kind as AccountRegion] : undefined;
   const prepared = await prepareWorld({ environments: [{
-    name: "desk", reach: "local", capabilities: ["setup", "banks", "browser", "workspaceChecks", ...(keyManagerRegion ? ["keyManagers", "managedTools"] as const : [])],
+    name: "desk", reach: kind === "permissions-sandbox-paired" ? "paired" : "local", capabilities: ["setup", "banks", "browser", "workspaceChecks", ...(keyManagerRegion ? ["keyManagers", "managedTools"] as const : []), ...(isForges(kind) ? ["forge"] as const : [])],
+    ...(isForges(kind) && { forges: FORGES[kind] }),
     ...(accountState !== undefined && { ambient: accountState.ambient }),
-    accounts: accountState !== undefined ? accountState.accounts : kind === "account" || kind === "close-confirmation" ? [] : kind === "sign-in"
+    accounts: accountState !== undefined ? accountState.accounts : kind === "account" || kind === "close-confirmation" ? [] : signIn
       ? [{ label: "Project", directory: { kind: "owned", path: "/accounts/project" }, status: { state: "expired", checkedAt: null, detail: null } }]
+      : kind === "carry-over-nothing" ? [{ label: "Project", directory: { kind: "owned", path: "/accounts/project" } }]
       : [{ label: "Project", directory: { kind: "adopted", path: "/accounts/project" } }],
     sessions: kind === "authoring" ? [{ title: "Set up: Memory bank", tags: ["setup", "memory-bank"] }] : [],
     ...(kind === "appearance-default" && {
@@ -174,31 +232,52 @@ async function prepareRegion(kind: SetupRegion) {
       setup: { appearance: { state: "needs-attention" as const, reason: "Some colours in Loud were adjusted so text stays readable.", failing: ["appearance.contrast"], actions: ["restore" as const] } },
     }),
     ...(kind === "host-updater" && { setup: { "your-machines": NEVER_POLLED } }),
+    ...(kind === "carry-over-nothing" && { setup: { "carry-over": NOTHING_TO_BRING } }),
     ...(kind === "rail-states" && { setup: RAIL_STATES }),
+    ...(binding !== undefined && { status: { binding } }),
     ...(kind === "instructions-unread" && { setup: { instructions: UNREAD_PARTS } }),
-    ...(kind === "permissions-sandbox" && { setup: { permissions: SANDBOX_UNAVAILABLE }, containment: NO_BUBBLEWRAP, settings: { "permissions.containment.default": "workspace" } }),
+    ...(isSandbox(kind) && { setup: { permissions: SANDBOX_UNAVAILABLE }, containment: NO_BUBBLEWRAP, settings: { "permissions.containment.default": "workspace" } }),
     ...(status !== undefined && { setup: { skills: status } }),
     ...(keyManagerRegion && keyManagersOf(kind)),
     ...(isBrowserRegion(kind) && { setup: { browser: BROWSER_RESULTS[kind] } }),
-  }] }, { firstLaunch: true });
+  }] }, { firstLaunch: true, presentation: { runLocalEnvironment: kind !== "permissions-sandbox-paired" } });
   const desk = prepared.world.environment("desk");
+  const carryOverStatus = (leftBehind: boolean) => {
+    const account = desk.accounts()[0]!;
+    desk.setSetup({ "carry-over": {
+      state: "needs-attention",
+      reason: leftBehind ? `1 item from ${account.label} did not come over. Choose Try again.` : `${account.label} has past chats to bring over. Choose Bring them over.`,
+      failing: ["carry-over.last-import"], actions: ["import-again"],
+      targets: [{ action: "import-again", kind: "account", id: account.id, label: account.label }],
+    } });
+    desk.passSetup(["carry-over"]);
+  };
+  if (kind === "carry-over" || kind === "carry-over-after") carryOverStatus(false);
   if (target === "instructions") scriptInstructions(desk, kind === "instructions-unread" ? ["forges", "banks"] : []);
   desk.wire.answer("browser.status", () => ({ result: {
     listener: { state: "listening", port: 47615 }, folder: { path: "/extension/current", problem: null }, shippedVersion: "0.1.0", unpairedConnected: kind === "browser-code",
     headless: { allowRuns: true, availability: { available: false, reason: "No browser installed." }, liveContexts: 0 },
   } }));
+  if (target === "skills") desk.wire.answer("skills.get", () => ({ result: SKILLS_ADDED }));
+  if (kind === "skills-link-refusal") desk.wire.answer("skills.probe", () => NO_GIT);
   const since = prepared.clock.now().toISOString();
   const chromes = kind === "browser-step-1" || kind === "browser-code" ? [] : [{ id: "0199aa00-0000-4000-8000-000000000041", name: "Project Chrome", pairedAt: since, lastConnectedAt: since, lastReportedVersion: "0.1.0", connected: kind !== "browser-closed", outdated: false }];
   desk.wire.answer("browser.chromes.list", () => ({ result: { chromes } }));
   desk.wire.answer("browser.pairing.code", () => ({ result: { code: "TEST2345", expiresAt: new Date(prepared.clock.now().getTime() + 300_000).toISOString() } }));
+  let brought = false;
   desk.wire.answer("carryOver.inventory", (params) => {
     const inventory: CarryOverInventory = {
-      accountId: String(params["accountId"]), sessions: { total: 24, archived: 6, missingDirectory: 2, new: 8 },
-      memory: { folders: 7, repositories: 3, unmappable: [], new: 2 },
-      skills: { skills: 5, commands: 2, new: 3, offered: [], invalid: 1 },
+      accountId: String(params["accountId"]), sessions: { total: 24, archived: 6, missingDirectory: 2, new: brought ? 1 : 24 },
+      memory: { folders: 7, repositories: 3, unmappable: [], new: brought ? 0 : 7 },
+      skills: { skills: 5, commands: 2, new: brought ? 0 : 7, offered: [], invalid: 1 },
       notCarried: [{ kind: "subagent", name: "helper" }], doesNotCarry: { hooks: 2, mcpServers: 1, permissionRules: 3 },
     };
     return { result: inventory };
+  });
+  desk.wire.answer("carryOver.run", (params) => {
+    brought = true;
+    if (kind === "carry-over-after") carryOverStatus(true);
+    return { result: { receipt: { status: "accepted", sequence: 1, changed: true }, result: broughtOver(String(params["accountId"])) } };
   });
   const holders = await startWorld(prepared, prepared.paired);
   if (kind === "status-could-not-check") desk.refuseSetupChecks({ code: "internal", message: "The step registry could not load.", data: {} });
@@ -231,7 +310,7 @@ export function setupRegionScene(kind: SetupRegion) {
     }, [ladder]);
     useEffect(() => {
       if (scene === undefined) return;
-      let began = false, finished = false, signed = false;
+      let began = false, finished = false, signed = false, unfolded = false;
       const advance = () => {
         const begin = document.querySelector<HTMLButtonElement>("[data-setup-begin]");
         if (!began && begin !== null && !begin.disabled) { began = true; begin.click(); }
@@ -240,14 +319,71 @@ export function setupRegionScene(kind: SetupRegion) {
           // By mouse, as #1694 saw it: the dialog then opens with no hint over its description.
           if (close !== null) { finished = true; close.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" })); close.click(); }
         }
-        if (kind === "sign-in") {
+        if (kind === "sign-in" || kind === "sign-in-refused") {
           // Set up's Account step opens the sign-in dialog; the provider answers once the card follows the started sign-in.
           const again = [...document.querySelectorAll<HTMLButtonElement>("[data-setup-scroll] button")].find((button) => button.textContent === "Sign in again");
           if (!finished && again !== undefined) { finished = true; again.click(); }
-          if (!signed && document.querySelector('[role="dialog"] section[aria-label="Terminal fallback"]') !== null) {
+          if (!signed && document.querySelector('[role="dialog"] [data-sign-in-terminal]') !== null) {
             signed = true;
-            scene.prepared.world.environment("desk").signIn("awaiting-code", { url: SIGN_IN_URL });
+            const desk = scene.prepared.world.environment("desk");
+            desk.signIn("awaiting-code", { url: SIGN_IN_URL });
+            // setup-copy.md §5.2: Claude refused the code the person pasted; the CLI's own words go to Details.
+            if (kind === "sign-in-refused") desk.signIn("failed", { error: "The provider's CLI exited with code 1: Login failed: Request failed with status code 400.", cause: "code-refused" });
           }
+          // Waiting for the code on this computer: the numbered steps unfolded under "The page did not open?".
+          const fold = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button[aria-expanded="false"]')].find((button) => button.textContent === "The page did not open?");
+          if (kind === "sign-in" && !unfolded && fold !== undefined) { unfolded = true; fold.click(); }
+          return;
+        }
+        if (kind === "carry-over-after") {
+          const bring = [...document.querySelectorAll<HTMLButtonElement>("[data-setup-scroll] button")].find((button) => button.textContent === "Bring them over");
+          if (!finished && bring !== undefined && !bring.disabled) { finished = true; bring.click(); }
+          return;
+        }
+        const typed = TYPED[kind];
+        if (typed !== undefined) {
+          // Add a forge, the address typed as a person types it, then Check address once it can be pressed.
+          const scroll = document.querySelector("[data-setup-scroll]");
+          if (finished || scroll === null) return;
+          const buttons = [...scroll.querySelectorAll<HTMLButtonElement>("button")];
+          const field = scroll.querySelector<HTMLInputElement>('form input[placeholder="https://github.com/you/project"]');
+          if (field === null) { buttons.find((button) => button.textContent === "Add a forge" && !button.disabled)?.click(); return; }
+          if (field.value !== typed) {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(field, typed);
+            field.dispatchEvent(new Event("input", { bubbles: true }));
+            return;
+          }
+          const check = buttons.find((button) => button.textContent === "Check address");
+          if (check !== undefined && !check.disabled) { finished = true; check.click(); }
+          return;
+        }
+        if (kind === "skills-link-refusal") {
+          // More options › Add from a link, an address typed as a person would, Look for skills, and the refusal's Details open.
+          const scroll = document.querySelector("[data-setup-scroll]");
+          const button = (words: string) => [...(scroll?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((candidate) => candidate.textContent === words);
+          const field = scroll?.querySelector<HTMLInputElement>('input[aria-label="Repository address"]') ?? null;
+          if (field === null) {
+            const more = button("More options");
+            if (more?.getAttribute("aria-expanded") === "false") more.click();
+            return;
+          }
+          if (field.value === "") {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(field, LINK);
+            field.dispatchEvent(new Event("input", { bubbles: true }));
+            return;
+          }
+          const look = button("Look for skills");
+          if (!finished && look !== undefined && !look.disabled) { finished = true; look.click(); }
+          const details = [...(scroll?.querySelectorAll<HTMLButtonElement>('[role="alert"] button') ?? [])].find((candidate) => candidate.textContent === "Details");
+          if (details?.getAttribute("aria-expanded") === "false") details.click();
+          // The link's field sits below the catalogue: bring it and the refusal under it into the capture.
+          if (details?.getAttribute("aria-expanded") === "true" && scroll !== null) scroll.scrollTop += field.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 48;
+          return;
+        }
+        if (MACHINES_BINDING[kind] !== undefined) {
+          // setup-copy.md §5.4: the question answered "Also from my other devices", as a person answers it.
+          const also = document.querySelector<HTMLButtonElement>('[role="radio"][aria-label="Also from my other devices"]');
+          if (also !== null && also.getAttribute("aria-checked") !== "true") also.click();
           return;
         }
         if (kind === "status-fix" && !finished) {
@@ -270,7 +406,7 @@ export function setupRegionScene(kind: SetupRegion) {
           if (!finished && reset !== undefined && !reset.disabled) { finished = true; reset.click(); }
           return;
         }
-        if (kind === "host-updater" || kind === "permissions-sandbox") {
+        if (kind === "host-updater" || isSandbox(kind)) {
           const label = kind === "host-updater" ? "How to set it up" : "How to fix it";
           const how = [...document.querySelectorAll<HTMLButtonElement>("[data-setup-scroll] button")].find((button) => button.textContent === label);
           if (!finished && how !== undefined) { finished = true; how.click(); }

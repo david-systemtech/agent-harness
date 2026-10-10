@@ -88,6 +88,50 @@ it("captures Your machines' never-polled container line with the host updater's 
   } finally { view.unmount(); }
 });
 
+// setup-copy.md §5.9: the catalogue with one collection added, and Add from a link refused for want of git (#1855).
+it("captures the Skills catalogue with one collection added and the rest offered with Add", async () => {
+  const Scene = setupRegionScene("skills");
+  const view = render(<Scene ladder="dark" />);
+  try {
+    const skills = await screen.findByRole("region", { name: "Skills" });
+    const unslop = await within(skills).findByRole("region", { name: "Unslop" });
+    expect(await within(unslop).findByText("Added")).toBeDefined();
+    expect(within(unslop).getByRole("button", { name: "Remove" })).toBeDefined();
+    expect(within(within(skills).getByRole("region", { name: "Matt Pocock — engineering" })).getByRole("button", { name: "Add" })).toBeDefined();
+  } finally { view.unmount(); }
+});
+
+it("captures Add from a link refused because git is missing, git's words open under Details", async () => {
+  const Scene = setupRegionScene("skills-link-refusal");
+  const view = render(<Scene ladder="dark" />);
+  try {
+    const skills = await screen.findByRole("region", { name: "Skills" });
+    const alert = await within(skills).findByRole("alert");
+    expect(within(alert).getByText("Git is not installed on desk. Install Git, then try again.")).toBeDefined();
+    expect(await within(alert).findByText(/spawn git ENOENT/)).toBeDefined();
+    expect((within(skills).getByRole("textbox", { name: "Repository address" }) as HTMLInputElement).value).toBe("https://git.example.test/team/procedures");
+  } finally { view.unmount(); }
+});
+
+// setup-copy.md §5.4: the Your machines question in its three states, only this computer, reachable through Tailscale and not reachable (#1846).
+it.each([
+  ["your-machines", "Only on this computer", undefined],
+  ["machines-tailscale", "Also from my other devices", "Your devices can reach this computer through Tailscale."],
+  ["machines-unreachable", "Also from my other devices", "Your other devices cannot reach this computer yet. Install Tailscale here and on your other devices."],
+] as const)("captures Your machines' %s scene with its answer chosen and its reach said", async (kind, answer, verdict) => {
+  const Scene = setupRegionScene(kind);
+  const view = render(<Scene ladder="dark" />);
+  try {
+    const machines = await screen.findByRole("region", { name: "Your machines" });
+    const question = await within(machines).findByRole("radiogroup", { name: "Use agent-harness from other devices?" });
+    await waitFor(() => expect(within(question).getByRole("radio", { name: answer }).getAttribute("aria-checked")).toBe("true"));
+    if (verdict === undefined) expect(within(machines).queryByRole("region", { name: "How your devices reach this computer" })).toBeNull();
+    else expect(await within(within(machines).getByRole("region", { name: "How your devices reach this computer" })).findByText(verdict)).toBeDefined();
+    if (kind === "machines-unreachable") expect(within(machines).getByRole("button", { name: "Get Tailscale" })).toBeDefined();
+    if (kind === "machines-tailscale") expect(within(machines).getByRole("region", { name: "Add a device" })).toBeDefined();
+  } finally { view.unmount(); }
+});
+
 // setup-copy.md §5.7: the Key manager card's states the gallery captures, none chosen, OpenBao's form, connected and not answering (#1851).
 it("captures the Key manager card asking which one you use, OpenBao's form, a key manager connected and one that does not answer", async () => {
   const scene = async (kind: Parameters<typeof setupRegionScene>[0], check: (card: HTMLElement) => Promise<void>) => {
@@ -191,6 +235,8 @@ it("captures the Permissions card's four choices, and a sandbox that does not wo
     expect(within(card).getByRole("button", { name: "Turn the sandbox off" })).toBeDefined();
     await waitFor(() => expect(within(card).getByRole("button", { name: "How to fix it" }).getAttribute("aria-expanded")).toBe("true"));
     expect(within(card).getByText("sudo apt-get install bubblewrap socat")).toBeDefined();
+    expect(within(card).getByRole("button", { name: "Restart agent-harness" })).toBeDefined();
+    expect(within(card).queryByText("agent-harness service stop && agent-harness service start")).toBeNull();
     expect(card.querySelector("[data-step-status] [data-notice-tone] h5")).not.toBeNull();
   } finally { sandbox.unmount(); }
 });
@@ -204,6 +250,19 @@ it.each<[StepId, string]>([["your-machines", "Your machines"], ["forges", "Forge
     expect(within(footer).getByRole("button", { name: "Back" })).toBeTruthy();
     expect(within(footer).getByRole("button", { name: "Skip for now" }).hasAttribute("disabled")).toBe(false);
     expect(within(footer).getByRole("button", { name: step === "appearance" ? "Finish set up" : "Continue" })).toBeTruthy();
+  } finally { view.unmount(); }
+});
+
+it.each([
+  ["forges-gh", "Use your GitHub sign-in from the gh tool (maintainer)"],
+  ["forges-add", "1. Create a token on git.example.test."],
+  ["forges-unknown", "agent-harness does not recognise this site. Choose what it runs:"],
+] as const)("drives the Forges card's %s scene to the state setup-copy.md §5.6 names", async (kind, line) => {
+  const Scene = setupRegionScene(kind);
+  const view = render(<Scene ladder="dark" />);
+  try {
+    const forges = await screen.findByRole("region", { name: "Forges" });
+    expect(await within(forges).findByText(line, {}, { timeout: 10_000 })).toBeDefined();
   } finally { view.unmount(); }
 });
 
@@ -242,5 +301,17 @@ it.each(["light", "dark"] as const)("captures the Default theme question in %s b
     const card = screen.getByRole("region", { name: "Appearance" });
     expect(within(card).getByText("Loud, on desk")).toBeDefined();
     expect(within(card).getByRole("button", { name: "Use the Default theme" })).toBeDefined();
+  } finally { view.unmount(); }
+});
+
+// #1988: the paired version of the sandbox guidance keeps a command to copy.
+it("captures the Permissions restart command on a paired computer", async () => {
+  const Scene = setupRegionScene("permissions-sandbox-paired");
+  const view = render(<Scene ladder="dark" />);
+  try {
+    const card = await screen.findByRole("region", { name: "Permissions" });
+    await waitFor(() => expect(within(card).getByRole("button", { name: "How to fix it" }).getAttribute("aria-expanded")).toBe("true"));
+    expect(within(card).getByText("agent-harness service stop && agent-harness service start")).toBeDefined();
+    expect(within(card).queryByRole("button", { name: "Restart agent-harness" })).toBeNull();
   } finally { view.unmount(); }
 });

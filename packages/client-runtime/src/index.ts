@@ -171,15 +171,19 @@ export {
   forgeOriginWords,
   forgeProblemAction,
   forgeRowProblem,
+  forgeRefusal,
+  forgeRowState,
   forgeStatusWords,
-  machineGhAbsence,
+  ghRoute,
   machineGhLogin,
   primaryWords,
   pullRequestNumber,
   pullRequestWords,
   shownPullRequest,
-  tokenPageWords,
+  tokenPermissionWords,
+  typedSite,
   type ForgeProblemAction,
+  type GhRoute,
 } from "./forges/words.js";
 export {
   addForgeAlias,
@@ -191,13 +195,16 @@ export {
   setPrimaryForge,
   signInForgeAgain,
   verifyForge,
+  ADDRESS_EXAMPLE,
   type Detection,
   type ForgeOutcome,
+  type ForgeRefused,
   type ForgeSender,
   type PastedForge,
 } from "./forges/actions.js";
 export {
   pairingDeepLink,
+  pairingLinkIsLocal,
   parsePairingInput,
   type PairingFailure,
   type PairingFailureReason,
@@ -621,6 +628,8 @@ export {
   startSignIn,
   type AccountAdded,
   type AttendedSignIn,
+  type CodeSent,
+  type SignInEnding,
 } from "./status/sign-in.js";
 export {
   DEFAULT_CHOICE_WORDS,
@@ -713,7 +722,7 @@ export {
   type ClientSessionSummary,
 } from "./access/words.js";
 export { readAccessLog, revokeSession, setSessionCeiling, setSessionAccess, type AccessLogRead, type AccessOutcome } from "./access/actions.js";
-export { ceilingAboveOwn, offeredPresets, type OfferedPreset, type OfferedPresets } from "./access/presets.js";
+export { CEILING_CHOICES, CANNOT_GIVE_MORE, SCOPE_TICKS, ceilingAboveOwn, offeredPresets, type CeilingChoice, type OfferedPreset, type OfferedPresets } from "./access/presets.js";
 export { UPDATES_MANAGED_OUTSIDE, environmentStateWords } from "./service/words.js";
 export {
   bundledClaudeCodeWords,

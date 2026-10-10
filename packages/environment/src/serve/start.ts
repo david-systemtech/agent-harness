@@ -1308,6 +1308,7 @@ export const startEnvironment = async (options: EnvironmentOptions = {}): Promis
     clock,
     git: skillsGit === undefined ? forgeGit : (request) => skillsGit(request, forgeGit),
     forgeAccounts: () => verifiedOrigins(forge.list()),
+    environmentName: () => look.read().name,
   });
   closers.push(() => skillProbes.close());
   // The skill sources (#498): a folder added from a probe's checkout, or a fetch, exported at its commit into a snapshot.
@@ -1598,6 +1599,8 @@ export const startEnvironment = async (options: EnvironmentOptions = {}): Promis
       // Windows Firewall asks once whether the environment's Node may accept connections (#1910), when it runs on the launcher's copy; the Reachability section says so beforehand.
       ...((options.platform ?? process.platform) === "win32" && onServeNode(options.execPath ?? process.execPath, dataDir) && { firewallAsksOnce: true as const }),
       lanAddresses: [...interfaces.lanAddresses()],
+      // A proxy's origin is where the pairing links point (#1847): other devices reach the environment there even on loopback alone.
+      ...(webOrigin !== undefined && { webOrigin }),
     }),
     lookAgain: async () => {
       if (boundBeside.tailnet === null) tailnetFound = (await interfaces.tailscaleAddress()) ?? null;

@@ -238,7 +238,7 @@ describe("a row's scope", () => {
           .getAllByRole("heading", { level: 3 })
           .map((heading) => heading.textContent),
         label,
-      ).toEqual(label === "Your machines" ? ["desk", "laptop", "Add a machine"] : ["desk", "laptop"]);
+      ).toEqual(label === "Your machines" ? ["desk", "laptop", "Add a device"] : ["desk", "laptop"]);
       for (const name of ["desk", "laptop"]) expect(within(everywhere).getByRole("region", { name }), `${label} ${name}`).toBeDefined();
     }
   });
@@ -326,7 +326,7 @@ describe("built and unbuilt row controls", () => {
     const ceiling = within(field(permissions, "permissions.defaultCeiling")).getByRole("radiogroup");
     expect(within(ceiling).getAllByRole("radio").map((radio) => radio.getAttribute("aria-label"))).toEqual(["Ask before any change", "Edit files, ask for the rest", "Let Claude decide", "Never ask"]);
     const banks = await openRow(app, "Memory banks");
-    expect(await within(banks).findByText("Facts your agents keep")).toBeDefined();
+    expect(await within(banks).findByRole("radiogroup", { name: "What would you like?" })).toBeDefined();
     expect(within(banks).getByRole("button", { name: "Open the Memory bank step in Set up" })).toBeDefined();
   });
 
