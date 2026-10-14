@@ -1,16 +1,17 @@
 import { keepsFold, rowKey, sessionHeadings, type DropTarget, type HeadingRow, type SessionHeading, type SessionRow } from "@agent-harness/client-runtime";
-import { useMemo, useRef, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { FolderGit2, PanelLeftClose, Plug, Plus, RotateCcw, Search } from "lucide-react";
 import { useFirstKey } from "../keys/key-dispatch.js";
 import { NewSessionButton } from "../new-session/control.js";
 import { useOpenPairing } from "../connections/pairing.js";
-import { focusedPane } from "../grid/layout.js";
+import { focusedPane, paneShowing } from "../grid/layout.js";
 import { useOpenInPane } from "../session/pane-line.js";
 import { classes } from "../ui/classes.js";
 import { Button, IconButton, Input, Tooltip } from "../ui/index.js";
 import { useObservable, usePresentation, useRuntime } from "../window-context.js";
 import { usePhoneFrame } from "../frame/phone-frame.js";
 import { ScheduledStrip } from "../routines/scheduled-strip.js";
+import { ReportDialog } from "../report-dialog.js";
 import { SidebarDialogs } from "./dialogs.js";
 import { useDropTarget } from "./drag.js";
 import { EnvironmentSection, FoldingSection } from "./headings.js";
@@ -48,6 +49,7 @@ export const Sidebar = (props: SidebarProps = {}) => (
 );
 
 const Headings = ({ onOpenSession }: SidebarProps) => {
+  const [reporting, setReporting] = useState(false);
   const phone = usePhoneFrame();
   const runtime = useRuntime();
   const environments = useObservable(runtime.projections.environments);
@@ -81,19 +83,23 @@ const Headings = ({ onOpenSession }: SidebarProps) => {
     });
 
   const views = new Map(environments.map((view) => [view.environmentId, view]));
-  const shown = focusedPane(layout).session;
+  const focused = focusedPane(layout);
   /** Each row, taking a session dropped on it at its place in its heading's block, or refusing it in the filtered list (null). */
   const rows = (lines: readonly HeadingRow[], heading: SessionHeading | null) =>
-    lines.map((line) => (
-      <SessionRowView
-        key={line.key}
-        line={line}
-        environment={views.get(line.row.environmentId)}
-        current={shown?.environmentId === line.row.environmentId && shown.sessionId === line.row.summary.id}
-        drop={heading === null ? { kind: "filtered" } : { kind: "row", heading, at: heading.block.rows.findIndex((held) => rowKey(held) === line.key) }}
-        open={() => { onOpenSession?.(line.row.environmentId, line.row.summary.id); openInPane(line.row.environmentId, line.row.summary.id); if (phone.narrow) phone.showDrawer(false); }}
-      />
-    ));
+    lines.map((line) => {
+      const pane = paneShowing(layout, { environmentId: line.row.environmentId, sessionId: line.row.summary.id });
+      return (
+        <SessionRowView
+          key={line.key}
+          line={line}
+          environment={views.get(line.row.environmentId)}
+          current={pane?.id === focused.id}
+          inPane={pane !== undefined}
+          drop={heading === null ? { kind: "filtered" } : { kind: "row", heading, at: heading.block.rows.findIndex((held) => rowKey(held) === line.key) }}
+          open={() => { onOpenSession?.(line.row.environmentId, line.row.summary.id); openInPane(line.row.environmentId, line.row.summary.id); if (phone.narrow) phone.showDrawer(false); }}
+        />
+      );
+    });
 
   return (
     <nav aria-label="Sessions" className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -147,7 +153,9 @@ const Headings = ({ onOpenSession }: SidebarProps) => {
         <Tooltip content="Pair with an environment…">
           <Button className="h-auto w-full justify-start rounded-none px-2.5 py-2 text-left text-2xs whitespace-normal text-ink-muted hover:bg-wash" onClick={() => openPairing()}><Plug aria-hidden="true" className="size-3" /><span className="min-w-0">Pair with an environment…</span></Button>
         </Tooltip>
+        <Button className="h-auto w-full justify-start rounded-none px-2.5 py-2 text-left text-2xs whitespace-normal text-ink-muted hover:bg-wash" onClick={() => setReporting(true)}>Report bug / Request feature</Button>
       </div>
+      {reporting && <ReportDialog close={() => setReporting(false)} />}
       <SidebarDialogs />
     </nav>
   );

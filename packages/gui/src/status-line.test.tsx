@@ -3,6 +3,7 @@ import { resetWords } from "@agent-harness/client-runtime";
 import { ENVIRONMENT_ICONS, whenWords, type AccountUsage, type EnvironmentIcon } from "@agent-harness/contracts";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { renderApp, type ScriptedEnvironment } from "../test/harness.js";
+import { backgroundAgents, backgroundProcess } from "../gallery/fixtures/background-process.js";
 import { glyphOf } from "./connections/environment-glyphs.js";
 
 /**
@@ -64,6 +65,34 @@ const window = (name: string, utilisation: number, observedAt: string, verdict: 
 });
 
 describe("the status line", () => {
+  it("shows a timed live wait after text ends, and names idle and stopped when the work is released", async () => {
+    const { app, env, session } = await opened();
+    let runId = "";
+    act(() => {
+      runId = env.startRun(session, "Check the receipts").runId;
+      env.emit(session, "tasks.changed", { runId, tasks: backgroundAgents });
+      env.endRun(session, runId);
+      env.setProcesses([backgroundProcess(session)]);
+    });
+    const line = statusLine();
+    expect(await within(line).findByText("Waiting on 3 background agents")).toBeTruthy();
+    const activity = await screen.findByRole("status", { name: "Run activity" });
+    expect(activity.textContent).toBe("Waiting on 3 background agents");
+    expect(activity.parentElement!.textContent).toContain("12m 00s");
+    expect(within(line).getByRole("img", { name: "Running · waiting on background work" }).className).toContain("bg-amber");
+    act(() => app.clock.advance(60_000));
+    await waitFor(() => expect(activity.parentElement!.textContent).toContain("13m 00s"));
+    // Stale task ledgers do not outlive the actual process's holds.
+    act(() => env.setProcesses([backgroundProcess(session, { holds: [] })]));
+    expect(await within(line).findByText("idle")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Run activity" })).toBeNull());
+    act(() => env.setProcesses([backgroundProcess(session, { holds: [], state: "stopped", stoppedAt: app.clock.now().toISOString(), stopReason: "idle" })]));
+    expect(await within(line).findByText("stopped")).toBeTruthy();
+    expect(within(line).queryByRole("img", { name: /Running/ })).toBeNull();
+    act(() => env.setProcesses([]));
+    await waitFor(() => expect(within(line).getByText("stopped")).toBeTruthy());
+  });
+
   it("keeps named icon chips in one wrapping row, with containment before browser and no text icons", async () => {
     await opened();
     const line = statusLine();
@@ -200,6 +229,21 @@ describe("the plan gauge", () => {
     expect(within(details).getByText("0%")).toBeTruthy();
     expect(within(details).getByText("2 other limits give no reading.")).toBeTruthy();
     expect(within(details).queryByText("—")).toBeNull();
+  });
+
+  it("shows a stale window's observation age even when another window was just read", async () => {
+    const { app, env } = await opened();
+    const now = app.clock.now();
+    const old = new Date(now.getTime() - 7 * 60_000).toISOString();
+    env.setUsage([{ ...reading("account-1", { provider: "claude", email: "reader@example.test", organisation: null }, [
+      window("five_hour", 0.42, old), window("seven_day", 0.65, now.toISOString()),
+    ]), readAt: now.toISOString() }]);
+    await within(statusLine()).findByRole("img", { name: "5-hour 42%" });
+    await app.user.click(within(statusLine()).getByRole("button", { name: "Usage details" }));
+    const details = await screen.findByRole("dialog", { name: "Usage details" });
+    expect(within(details).getByLabelText("5-hour reading age").textContent).toContain("Read 7m 00s ago · stale");
+    expect(within(details).queryByLabelText("Weekly reading age")).toBeNull();
+    expect(within(details).getByLabelText("Reading age").textContent).not.toContain("stale");
   });
 
   // #1951: the popover printed raw ISO reset and read times.
@@ -414,6 +458,26 @@ describe("run info", () => {
 });
 
 describe("current context meter", () => {
+  it("draws context with the plan rings' readable mono numbers, size and tone thresholds", async () => {
+    const { env, session } = await opened([desk({ provider: { contextReadings: true } })]);
+    const checkRing = async (name: string, number: string, fontSize: number, tone: string, share: number) => {
+      const ring = await within(statusLine()).findByRole("img", { name });
+      expect(ring.textContent).toBe(number);
+      const numberText = ring.querySelector("text");
+      expect(Number.parseFloat(numberText?.style.fontSize || numberText?.getAttribute("font-size") || "")).toBe(fontSize);
+      expect(ring.getAttribute("viewBox")).toBe("0 0 36 36");
+      expect(ring.getAttribute("class")).toContain("font-mono");
+      expect(ring.getAttribute("class")).toContain(tone);
+      expect(ring.querySelector<SVGCircleElement>("[data-usage-arc]")?.style.strokeDasharray).toBe(`${share} 100`);
+    };
+    await checkRing("Context: unknown", "—", 13.5, "text-ink-faint", 0);
+    const { runId } = env.startRun(session, "Check context ring");
+    for (const [share, tone] of [[0, "text-mint"], [74, "text-mint"], [75, "text-amber"], [89, "text-amber"], [90, "text-signal"], [100, "text-signal"]] as const) {
+      env.emit(session, "context.reported", { runId, model: "claude-opus-4", contextTokens: share, contextWindow: 100 });
+      await checkRing(`Context: ${share}%`, String(share), share === 100 ? 12 : 13.5, tone, share);
+    }
+  });
+
   it("shows unknown before a run, known zero on start, then current request share independently of spend", async () => {
     const { app, env, session } = await opened([desk({ provider: { contextReadings: true }, models: [{ accountId: "account-1", models: [{ id: "claude-opus-4", family: "opus", tier: 1, label: null, efforts: [], contextWindow: 1000 }] }] })]);
     const meter = await within(statusLine()).findByRole("img", { name: "Context: unknown" });

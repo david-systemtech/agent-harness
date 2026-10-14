@@ -85,6 +85,16 @@ Capture readiness includes a fresh placement of the focused dialog's tooltip aft
 
 The #1537 hosted probe (run 37178192474, PR #1538) repeated restore captures eight times for each viewport and ladder. The old gate accepted eight stale positions out of 32, reproducing the reported 536/542-pixel differences. The narrow tooltip stayed at (661, 405) instead of (662, 406), and the wide tooltip at (849, 471) instead of (850, 472). Focus, reference rectangles, tooltip dimensions and animation state were unchanged. Allowing screenshot animations produced the same failures; refreshing placement corrected all 32 captures to zero differences. The full hosted gallery also matched all 342 scenes without changing baselines or budgets.
 
+The #2144 permission probe reproduced a five-height resize cycle in all 16 fresh
+mounts, even after fonts were ready: the dock's fractional rectangle and rounded
+`scrollHeight` disagreed. Subtracting the card's fractional height from the rounded
+dock height fed the error back into each allocation. The dock now uses its rectangle
+when `scrollHeight` and `clientHeight` agree, and its content height only for actual
+overflow. The fixed hosted probe held one height across 24 frames in each of 16
+mounts; all 15 subsequent captures matched the first with zero different pixels.
+The stable light capture was reviewed and accepted once. The 0.05% pixel budget,
+geometry checks and capture readiness gate remain unchanged.
+
 ## Retries, failures and retention
 
 Each completed report stores immutable capture bytes in the `window-gallery` generic package under version `<head>-<comment-id>`. Repeating a hosted run on the same head creates another report version, so a retry cannot replace bytes in an earlier review. The comment manifest records the version, exact package download URL and SHA-256 of each capture. Acceptance selects the latest reported shard group (or legacy single report) for the current head and verifies its hashes before writing any baseline. Existing head-only manifests remain downloadable for compatibility.
@@ -105,7 +115,7 @@ When the hosted workflow changes, install `.forgejo/github-workflows/gallery.yml
 
 When publication limits change, verify a gallery triggered on an open PR after the change reaches trusted main. The `pull_request_target` workflow checks out the event's base SHA; the PR head supplies the captures, not the publisher. A run started before the main merge does not prove the new publisher, even if it finishes afterward. Reuse an existing qualifying run rather than replaying a merged PR, which the publisher refuses.
 
-Check the event's base SHA and the relay checkout log, then confirm the completed report is authored by the reserved Actions identity (user ID `-2`). Its immutable version must be `<head>-<comment-id>`. Count the manifest captures, download every capture through its authenticated `api_url`, and verify each SHA-256, PNG signature and viewport dimensions. Check capture totals against 400 rows per shard and 48 MiB combined, and the hosted artifact's ZIP size against 64 MiB. A successful trusted publisher also proves its complete archive passed the sharded 2400-PNG, 2402-entry and 48-MiB expanded-payload guards. Report publication separately from geometry and pixel results.
+Check the event's base SHA and the relay checkout log, then confirm the completed report is authored by the reserved Actions identity (user ID `-2`). Its immutable version must be `<head>-<comment-id>`. Count the manifest captures, download every capture through its authenticated `api_url`, and verify each SHA-256, PNG signature and viewport dimensions. Check capture totals against 400 rows per shard and 48 MiB combined, and the hosted artifact's ZIP size against 64 MiB. A successful trusted publisher also proves its complete archive passed the sharded 1620-PNG, 1622-entry and 48-MiB expanded-payload guards. Report publication separately from geometry and pixel results.
 
 ### Hosted verification, 2026-10-03 (#1496)
 
@@ -123,7 +133,22 @@ No publication failure was found, so no additional publisher or baseline change 
 
 ## Report shards
 
-Filename discovery creates desktop and phone shards with at most 400 captures each.
+Filename discovery creates desktop and phone shards with at most 270 captures
+each (`scripts/gallery-allocation.json`). Desktop captures are larger
+(about 68 KiB each at 1400 × 900 and 1024 × 768): a 400-capture desktop shard is
+about 26.6 MiB, and a frame-wide change that adds a baseline and a difference PNG
+for most of its captures pushes its report past the 48 MiB expanded payload limit,
+so it fails before upload and nothing can be accepted. At 270 captures a desktop
+shard holds about 18 MiB of captures, leaving about 30 MiB for baseline and
+difference PNGs, and a frame-wide change spreads across more shards. Phone shards
+follow for the same reason: a phone-wide change (#2176 changes 392 phone captures)
+filled 400-capture phone shards with capture, baseline and difference triplets past
+the same limit, and two of its four shards never uploaded. The 672 phone captures
+on main at this change form three phone shards (270, 270 and 132). The sharded guards
+follow the allocation: `MAX_PNGS` is the allocation sum times three, 540 × 3 = 1620
+PNGs, and 1622 entries with `report.json` and `geometry.json`. The publisher's
+per-shard row cap stays at 400, so reviewed reports published under the earlier
+allocation stay valid.
 The hosted workflow discovers the matrix from `gallery/plan.ts`, with `gallery/shards.ts` as a fallback for earlier heads, captures each
 shard with `GALLERY_SHARD`, and uploads `window-gallery-<shard-id>`. Every shard
 keeps the 1,200 PNG, 48 MiB expanded payload and 64 MiB transport limits, geometry

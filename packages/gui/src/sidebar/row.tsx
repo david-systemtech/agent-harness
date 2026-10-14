@@ -1,4 +1,4 @@
-import type { DropTarget, EnvironmentView, HeadingRow, RowActivity } from "@agent-harness/client-runtime";
+import { activityOf, type DropTarget, type EnvironmentView, type HeadingRow } from "@agent-harness/client-runtime";
 import { useMemo, useRef, useState } from "react";
 import { Ellipsis, GitBranch, LoaderCircle } from "lucide-react";
 import { usePhoneFrame } from "../frame/phone-frame.js";
@@ -14,6 +14,8 @@ import { useOrganise } from "./organise.js";
 import { RenameField } from "./rename-field.js";
 import { contextMenuKeys, openContextActions } from "./menu-entry.js";
 import { RowMenu } from "./row-menu.js";
+import { ActivityMark } from "../session/activity-mark.js";
+import { useProviderProcess } from "../status/use-process.js";
 import { activityWords, quoted } from "./words.js";
 
 /**
@@ -24,23 +26,18 @@ import { activityWords, quoted } from "./words.js";
  * command about it awaits its receipt (`awaitingReceipt`). A row of an
  * environment that cannot be reached is the cached snapshot's, dim, and
  * says so. Clicking it opens the session in the focused pane; the one open
- * there is marked current. Its context menu organises it (`row-menu.tsx`),
+ * there is marked current; sessions shown in other panes have their own tone. Its context menu organises it (`row-menu.tsx`),
  * Rename turning its title into a field in place; it drags its session, and
  * takes a dragged one dropped on it (`drag.tsx`).
  */
-
-/** Six-pixel semantic dots, with waiting taking precedence in the runtime's activity resolver. */
-const ActivityMark = ({ activity }: { readonly activity: RowActivity }) => {
-  const words = activityWords(activity);
-  if (words === undefined) return null;
-  return <span role="img" aria-label={words} className={classes("size-1.5 shrink-0 rounded-full", activity.state === "parked" ? "bg-amber" : "bg-cyan", activity.state === "running" && "motion-safe:animate-pulse")} />;
-};
 
 export interface SessionRowProps {
   readonly line: HeadingRow;
   readonly environment: EnvironmentView | undefined;
   /** It is the session the focused pane shows. */
   readonly current: boolean;
+  /** It is shown in any pane, including the focused one. */
+  readonly inPane: boolean;
   /** Where a session dropped on it goes: its place in its heading's block, or the filtered list. */
   readonly drop: DropTarget;
   open(): void;
@@ -49,9 +46,11 @@ export interface SessionRowProps {
 /** The longest title a session takes (`UserTitle`'s 200 characters). */
 export const TITLE_MOST = 200;
 
-export const SessionRowView = ({ line, environment, current, drop, open }: SessionRowProps) => {
+export const SessionRowView = ({ line: listed, environment, current, inPane, drop, open }: SessionRowProps) => {
   const { narrow } = usePhoneFrame();
   const trigger = useRef<HTMLButtonElement>(null);
+  const process = useProviderProcess(listed.row.environmentId, listed.row.summary.id);
+  const line = { ...listed, activity: activityOf(listed.row.summary, process) };
   const { row } = line;
   const { summary } = row;
   const runtime = useRuntime();
@@ -88,12 +87,14 @@ export const SessionRowView = ({ line, environment, current, drop, open }: Sessi
                 data-sidebar-row
                 aria-label={[name, summary.title, ...summary.tags.map((tag) => `#${tag}`), line.wake, activityWords(line.activity), line.pending ? "Pending" : null].filter(Boolean).join(" ")}
                 aria-current={current ? "true" : undefined}
+                aria-description={current ? "Open in the focused pane" : inPane ? "Open in a pane" : undefined}
                 title={line.dim ? `Cached: ${name} is not answering.` : undefined}
                 className={classes(
                   "flex h-full w-full min-w-0 flex-col items-start justify-center gap-0.5 rounded-md px-2 py-[min(0.375rem,calc((50px-18px-1.125rem)/2))] text-left font-normal outline-none hover:bg-wash focus-visible:outline-2 focus-visible:outline-beam",
                   narrow && "flex-1",
                   line.dim ? "text-ink-faint" : "text-ink",
                   current && "bg-wash-strong",
+                  !current && inPane && "bg-beam/10",
                   summary.archivedAt !== null && "opacity-60",
                 )}
               >

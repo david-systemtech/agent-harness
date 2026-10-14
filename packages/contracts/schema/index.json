@@ -3635,6 +3635,126 @@
       "title": "CloseValue"
     },
     {
+      "path": "browser/verbs/left_click/args.json",
+      "title": "LeftClickArgs"
+    },
+    {
+      "path": "browser/verbs/left_click/value.json",
+      "title": "LeftClickValue"
+    },
+    {
+      "path": "browser/verbs/right_click/args.json",
+      "title": "RightClickArgs"
+    },
+    {
+      "path": "browser/verbs/right_click/value.json",
+      "title": "RightClickValue"
+    },
+    {
+      "path": "browser/verbs/middle_click/args.json",
+      "title": "MiddleClickArgs"
+    },
+    {
+      "path": "browser/verbs/middle_click/value.json",
+      "title": "MiddleClickValue"
+    },
+    {
+      "path": "browser/verbs/double_click/args.json",
+      "title": "DoubleClickArgs"
+    },
+    {
+      "path": "browser/verbs/double_click/value.json",
+      "title": "DoubleClickValue"
+    },
+    {
+      "path": "browser/verbs/triple_click/args.json",
+      "title": "TripleClickArgs"
+    },
+    {
+      "path": "browser/verbs/triple_click/value.json",
+      "title": "TripleClickValue"
+    },
+    {
+      "path": "browser/verbs/hover/args.json",
+      "title": "HoverArgs"
+    },
+    {
+      "path": "browser/verbs/hover/value.json",
+      "title": "HoverValue"
+    },
+    {
+      "path": "browser/verbs/left_click_drag/args.json",
+      "title": "LeftClickDragArgs"
+    },
+    {
+      "path": "browser/verbs/left_click_drag/value.json",
+      "title": "LeftClickDragValue"
+    },
+    {
+      "path": "browser/verbs/left_mouse_down/args.json",
+      "title": "LeftMouseDownArgs"
+    },
+    {
+      "path": "browser/verbs/left_mouse_down/value.json",
+      "title": "LeftMouseDownValue"
+    },
+    {
+      "path": "browser/verbs/left_mouse_up/args.json",
+      "title": "LeftMouseUpArgs"
+    },
+    {
+      "path": "browser/verbs/left_mouse_up/value.json",
+      "title": "LeftMouseUpValue"
+    },
+    {
+      "path": "browser/verbs/mouse_move/args.json",
+      "title": "MouseMoveArgs"
+    },
+    {
+      "path": "browser/verbs/mouse_move/value.json",
+      "title": "MouseMoveValue"
+    },
+    {
+      "path": "browser/verbs/scroll_to/args.json",
+      "title": "ScrollToArgs"
+    },
+    {
+      "path": "browser/verbs/scroll_to/value.json",
+      "title": "ScrollToValue"
+    },
+    {
+      "path": "browser/verbs/zoom/args.json",
+      "title": "ZoomArgs"
+    },
+    {
+      "path": "browser/verbs/zoom/value.json",
+      "title": "ZoomValue"
+    },
+    {
+      "path": "browser/verbs/form_input/args.json",
+      "title": "FormInputArgs"
+    },
+    {
+      "path": "browser/verbs/form_input/value.json",
+      "title": "FormInputValue"
+    },
+    {
+      "path": "browser/verbs/hold_key/args.json",
+      "title": "HoldKeyArgs"
+    },
+    {
+      "path": "browser/verbs/hold_key/value.json",
+      "title": "HoldKeyValue"
+    },
+    {
+      "path": "browser/verbs/key/args.json",
+      "title": "KeyArgs"
+    },
+    {
+      "path": "browser/verbs/key/value.json",
+      "title": "KeyValue"
+    },
+    {
       "path": "browser/page-command.json",
       "title": "PageCommand"
     },
@@ -4887,6 +5007,18 @@
       "title": "sessions.list error"
     },
     {
+      "path": "methods/transcript.image/params.json",
+      "title": "transcript.image params"
+    },
+    {
+      "path": "methods/transcript.image/result.json",
+      "title": "transcript.image result"
+    },
+    {
+      "path": "methods/transcript.image/error.json",
+      "title": "transcript.image error"
+    },
+    {
       "path": "methods/sessions.get/params.json",
       "title": "sessions.get params"
     },
@@ -5077,6 +5209,18 @@
     {
       "path": "methods/providers.processes.list/error.json",
       "title": "providers.processes.list error"
+    },
+    {
+      "path": "methods/providers.processes.status/params.json",
+      "title": "providers.processes.status params"
+    },
+    {
+      "path": "methods/providers.processes.status/result.json",
+      "title": "providers.processes.status result"
+    },
+    {
+      "path": "methods/providers.processes.status/error.json",
+      "title": "providers.processes.status error"
     },
     {
       "path": "methods/providers.processes.stop/params.json",
@@ -5497,6 +5641,22 @@
     {
       "path": "methods/instructions.import/error.json",
       "title": "instructions.import error"
+    },
+    {
+      "path": "methods/reports.submit/params.json",
+      "title": "reports.submit params"
+    },
+    {
+      "path": "methods/reports.submit/result.json",
+      "title": "reports.submit result"
+    },
+    {
+      "path": "methods/reports.submit/response.json",
+      "title": "reports.submit response"
+    },
+    {
+      "path": "methods/reports.submit/error.json",
+      "title": "reports.submit error"
     },
     {
       "path": "methods/forge.accounts.list/params.json",
@@ -8131,6 +8291,15 @@
       "error": "methods/sessions.list/error.json"
     },
     {
+      "name": "transcript.image",
+      "scope": "read",
+      "kind": "query",
+      "stream": false,
+      "params": "methods/transcript.image/params.json",
+      "result": "methods/transcript.image/result.json",
+      "error": "methods/transcript.image/error.json"
+    },
+    {
       "name": "sessions.get",
       "scope": "read",
       "kind": "query",
@@ -8261,6 +8430,15 @@
       "params": "methods/providers.processes.list/params.json",
       "result": "methods/providers.processes.list/result.json",
       "error": "methods/providers.processes.list/error.json"
+    },
+    {
+      "name": "providers.processes.status",
+      "scope": "read",
+      "kind": "query",
+      "stream": false,
+      "params": "methods/providers.processes.status/params.json",
+      "result": "methods/providers.processes.status/result.json",
+      "error": "methods/providers.processes.status/error.json"
     },
     {
       "name": "providers.processes.stop",
@@ -8540,6 +8718,16 @@
       "result": "methods/instructions.import/result.json",
       "response": "methods/instructions.import/response.json",
       "error": "methods/instructions.import/error.json"
+    },
+    {
+      "name": "reports.submit",
+      "scope": "admin",
+      "kind": "command",
+      "stream": false,
+      "params": "methods/reports.submit/params.json",
+      "result": "methods/reports.submit/result.json",
+      "response": "methods/reports.submit/response.json",
+      "error": "methods/reports.submit/error.json"
     },
     {
       "name": "forge.accounts.list",

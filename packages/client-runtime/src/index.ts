@@ -322,9 +322,12 @@ export {
 export { DRAFT_DEBOUNCE_MS, type Drafts } from "./outbox/drafts.js";
 export {
   CACHE_REFRESH_NOTICES,
+  IMPORT_WAIT_MS,
+  LONG_WAITS,
   QUERY_REFRESH_NOTICES,
   REQUEST_CACHE_TTL_MS,
   REQUEST_TIMEOUT_MS,
+  UPDATE_APPLY_TIMEOUT_MS,
   type CachedAnswer,
   type QueryMethodName,
   type RequestAnswer,
@@ -587,6 +590,8 @@ export {
   windowOut,
   windowWords,
   workingWords,
+  backgroundWords,
+  rowActivityWords,
   type Pressure,
   type Reading,
   type Spend,
@@ -770,3 +775,5 @@ export { undoFile, fileUndoWords, type FileUndoResult } from "./files/undo.js";
 export { clientLocalImportValues } from "./state-import.js";
 
 export { contextOf, type ContextFacts } from "./status/context.js";
+
+export { transcriptTime, transcriptRowTime } from "./transcript/time.js";

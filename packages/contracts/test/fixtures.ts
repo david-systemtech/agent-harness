@@ -423,6 +423,10 @@ const invalidStatuses = [
 
 /** Params and result instances for every registered method. */
 const methodFixtures: Record<string, { params: Fixtures; result: Fixtures }> = {
+  "reports.submit": {
+    params: { valid: [{ commandId: "0f8fad5b-d9cb-469f-a165-70867728950e", report: { kind: "bug", level: "major", name: "Reporter", description: "The window freezes.", client: { version: "0.1.0", kind: "gui" }, attachments: [] } }], invalid: [{}] },
+    result: { valid: [{ number: 1, url: "https://github.com/example/project/issues/1" }], invalid: [{}] },
+  },
   ...attentionMethodFixtures, ...pushMethodFixtures,
   "web.origins.get": { params: { valid: [{}], invalid: [[]] }, result: { valid: [{ clientOrigins: [], connectOrigins: [] }], invalid: [{}] } },
   "web.origins.set": {
@@ -863,6 +867,7 @@ export const schemaFixtures: Record<string, Fixtures> = {
       { type: "environment.icon-set", payload: { icon: "nas" } },
       { type: "environment.colour-set", payload: { colour: "amber" } },
       knownEnvironmentsNotice.valid,
+      { type: "process.updated", payload: { sessionId: "0199a100-0000-4000-8000-000000000001" } },
       { type: "account.updated", payload: { accountId: "claude-max", change: "status-changed", warning: null } },
       {
         type: "signin.updated",

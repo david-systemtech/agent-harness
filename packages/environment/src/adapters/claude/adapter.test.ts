@@ -1,13 +1,18 @@
+import { createTranscriptImages } from "../../transcript-images/store.js";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
-import { EMPTY_RUN_SKILL_SET, type AccountIdentity, type RunSkillSet } from "@agent-harness/contracts";
+import { basename, join } from "node:path";
+import { EMPTY_RUN_SKILL_SET, registry, type AccountIdentity, type RunSkillSet } from "@agent-harness/contracts";
 import type { Options, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { manualClock, type ManualClock } from "../../../test/clock.js";
 import { FakeSdk, sdk, type FakeQuery } from "../../../test/fake-claude-sdk.js";
 import { git } from "../../../test/workspaces.js";
+import { fakeAdapter } from "../../../test/fake-adapter.js";
+import { startTestEnvironment } from "../../../test/helper.js";
+import { create, deleteSession, purgeSession } from "../../../test/sessions.js";
+import { WAIT_MS } from "../../../test/wire-client.js";
 import {
   WithdrawUnsupported,
   type AdapterEvent,
@@ -207,6 +212,31 @@ const started = async (index = 1): Promise<FakeQuery> => {
 };
 
 describe("a run", () => {
+  it("retains SDK tool images through the run context and emits only references", async () => {
+    const root = mkdtempSync(join(tmpdir(), "transcript-images-"));
+    try {
+      const store = createTranscriptImages(root);
+      const adapter = adapterWith();
+      const input = runInput();
+      const run = adapter.createRun(input, { ...contextWith(), recordImage: (mediaType, data) => store.retain(SESSION, mediaType, data) });
+      const query = await started();
+      query.emit(
+        sdk.init(PROVIDER_SESSION), sdk.replyStart("shot-message", input.prompt.map((message) => message.messageId)),
+        { type: "assistant", message: { id: "shot-message", role: "assistant", content: [{ type: "tool_use", id: "shot", name: "mcp__browser__screenshot", input: {} }] } },
+        { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "shot", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "cGljdHVyZQ==" } }] }] } },
+        sdk.result(PROVIDER_SESSION),
+      );
+      const events = await drain(run);
+      const ended = events.find((event) => event.type === "tool.ended");
+      expect(ended?.type).toBe("tool.ended");
+      if (ended?.type !== "tool.ended") throw new Error("No image result.");
+      const [image] = ended.payload.output as { hash: string }[];
+      expect(store.read(SESSION, image!.hash)).toEqual({ mediaType: "image/png", data: "cGljdHVyZQ==" });
+      expect(JSON.stringify(events)).not.toContain("cGljdHVyZQ==");
+      await adapter.stopProcess(SESSION);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("streams the mapped events and ends once, on the result", async () => {
     const adapter = adapterWith();
     const input = runInput();
@@ -386,6 +416,131 @@ describe("a run in a worktree", () => {
 });
 
 describe("the streaming input", () => {
+  it.each(["plan", "acceptEdits", "auto", "bypassPermissions"] as const)("carries files by named paths under the session scratch directory on start and send in %s", async (mode) => {
+    const root = mkdtempSync(join(tmpdir(), "agent-harness-files-"));
+    const scratchDirectory = join(root, "scratch");
+    const first = { ...message("Read the JSON"), attachments: [{ kind: "file" as const, name: "settings.json", mediaType: "application/json", data: Buffer.from('{"enabled":true}') }] };
+    const containment = { ...runInput().containment, level: "workspace" as const, mechanism: "bubblewrap" as const, scratchDirectory, writable: ["/work/repo", scratchDirectory] };
+    const input = runInput({ mode, containment, prompt: [first] });
+    const adapter = adapterWith();
+    try {
+      const run = adapter.createRun(input, contextWith());
+      const query = await started();
+      expect(query.options.permissionMode).toBe(mode);
+      expect(query.options.sandbox?.filesystem?.allowWrite).toContain(scratchDirectory);
+      const content = query.prompts[0]?.message.content;
+      expect(content).toContain("Attached files (read with file tools):");
+      const reference = JSON.parse(String(content).split("\n").at(-1) ?? "") as { path: string; mediaType: string; size: number };
+      expect(reference).toEqual({ path: expect.stringContaining(join(scratchDirectory, "attachments")), mediaType: "application/json", size: 16 });
+      expect(basename(reference.path)).toBe("settings.json");
+      expect(readFileSync(reference.path, "utf8")).toBe('{"enabled":true}');
+      if (process.platform !== "win32") expect(statSync(reference.path).mode & 0o777).toBe(0o600);
+      await run.send({ ...first, messageId: randomUUID(), attachments: [{ ...first.attachments[0]!, data: Buffer.from("second") }] });
+      await query.promptsPushed(2);
+      const sent = JSON.parse(String(query.prompts[1]?.message.content).split("\n").at(-1) ?? "") as { path: string; size: number };
+      expect(sent.size).toBe(6);
+      expect(sent.path).not.toBe(reference.path);
+      expect(readFileSync(sent.path, "utf8")).toBe("second");
+      expect(readFileSync(reference.path, "utf8")).toBe('{"enabled":true}');
+      expect(adapter.descriptor.fileInput).toBe(true);
+      await adapter.stopProcess(SESSION, { kill: true });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps path-like file names inside staging and carries files beside image blocks", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agent-harness-files-"));
+    const scratchDirectory = join(root, "scratch");
+    const attached = { ...message("Read both"), attachments: [
+      { kind: "file" as const, name: "../../report.txt", mediaType: "text/plain", data: Buffer.from("text bytes") },
+      { kind: "file" as const, name: "..\\..\\report.txt", mediaType: "application/octet-stream", data: Uint8Array.of(0, 255) },
+      { kind: "image" as const, name: "shot.png", mediaType: "image/png", data: Uint8Array.of(1, 2, 3) },
+    ] };
+    const adapter = adapterWith();
+    try {
+      adapter.createRun(runInput({ containment: { ...runInput().containment, scratchDirectory }, prompt: [attached] }), contextWith());
+      const query = await started();
+      const content = query.prompts[0]?.message.content;
+      expect(content).toEqual([
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "AQID" } },
+        { type: "text", text: expect.stringContaining("Read both\nAttached files (read with file tools):") },
+      ]);
+      const text = (content as { type: string; text: string }[])[1]?.text ?? "";
+      const references = text.split("\n").slice(2).map((line) => JSON.parse(line) as { path: string });
+      expect(references).toHaveLength(2);
+      for (const reference of references) {
+        expect(reference.path.startsWith(join(scratchDirectory, "attachments"))).toBe(true);
+        expect(basename(reference.path)).toBe("report.txt");
+      }
+      expect(readFileSync(references[0]!.path, "utf8")).toBe("text bytes");
+      expect(readFileSync(references[1]!.path)).toEqual(Buffer.from([0, 255]));
+    } finally {
+      await adapter.stopProcess(SESSION, { kill: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("refuses to stage through an attachment-directory symlink", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agent-harness-files-"));
+    const scratchDirectory = join(root, "scratch");
+    const outside = join(root, "outside");
+    mkdirSync(scratchDirectory);
+    mkdirSync(outside);
+    symlinkSync(outside, join(scratchDirectory, "attachments"));
+    const adapter = adapterWith();
+    try {
+      const run = adapter.createRun(runInput({ containment: { ...runInput().containment, scratchDirectory }, prompt: [{ ...message("Read"), attachments: [{ kind: "file", name: "report.txt", mediaType: "text/plain", data: Buffer.from("file bytes") }] }] }), contextWith());
+      expect(ends(await drain(run))).toEqual([expect.objectContaining({ reason: "error", error: expect.objectContaining({ message: expect.stringContaining("symbolic link") }) })]);
+      expect(fake.queries).toHaveLength(0);
+      expect(readdirSync(outside)).toEqual([]);
+    } finally {
+      await adapter.stopProcess(SESSION, { kill: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("advertises file input over providers.list and retains the named file until session purge", async () => {
+    // Account probes remain scripted; run creation is the real adapter over the SDK transport.
+    const real = adapterWith();
+    const t = await startTestEnvironment({ adapter: { ...fakeAdapter(), descriptor: real.descriptor, createRun: real.createRun } });
+    let sessionId: string | undefined;
+    try {
+      const client = await t.client();
+      const providers = registry["providers.list"].result.parse(await client.request("providers.list", {}));
+      expect(providers.providers[0]?.fileInput).toBe(true);
+      const { id } = await create(client);
+      sessionId = id;
+      const answer = registry["runs.start"].response.parse(await client.request("runs.start", {
+        commandId: randomUUID(), sessionId: id, text: "A file will follow",
+      }));
+      expect(answer.receipt.status).toBe("accepted");
+      const query = await started();
+      const scratch = join(t.dataDir, "containment", id, "scratch");
+      expect(query.options.additionalDirectories).toContain(scratch);
+      expect(existsSync(scratch)).toBe(true);
+      const sent = registry["runs.send"].response.parse(await client.request("runs.send", {
+        commandId: randomUUID(), sessionId: id, text: "Read this file", attachments: [{ kind: "file", name: "notes.pdf", mediaType: "application/pdf", data: Buffer.from("pdf bytes").toString("base64") }],
+      }));
+      expect(sent.receipt.status).toBe("accepted");
+      await query.promptsPushed(2);
+      const reference = JSON.parse(String(query.prompts[1]?.message.content).split("\n").at(-1) ?? "") as { path: string };
+      expect(reference.path.startsWith(join(scratch, "attachments"))).toBe(true);
+      expect(readFileSync(reference.path, "utf8")).toBe("pdf bytes");
+      // The real gate leaves session scratch reads outside the data-directory denylist.
+      expect(await query.preToolUse("Read", { file_path: reference.path }, { toolUseID: "read_attachment" })).not.toEqual(expect.objectContaining({ hookSpecificOutput: expect.objectContaining({ permissionDecision: "deny" }) }));
+      query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("file_reply", query.prompts.map((prompt) => prompt.uuid as string)), sdk.text("file_reply", "Read it."), sdk.result(PROVIDER_SESSION));
+      await vi.waitFor(() => expect(t.env.log.readStream({ kind: "session", id }).some((event) => event.type === "run.ended")).toBe(true), { timeout: WAIT_MS });
+      await deleteSession(client, id);
+      expect(existsSync(reference.path)).toBe(true);
+      await purgeSession(client, id);
+      await vi.waitFor(() => expect(existsSync(reference.path)).toBe(false), { timeout: WAIT_MS });
+    } finally {
+      if (sessionId !== undefined) await real.stopProcess(sessionId, { kill: true });
+      await t.close();
+    }
+  });
+
   it("seeds the prompt pump with the run's messages, stamped with their ids, images ahead of the text", async () => {
     const adapter = adapterWith();
     const first = message("Look at this");
@@ -1558,6 +1713,23 @@ describe("an interrupt", () => {
 });
 
 describe("the process across turns", () => {
+  it.each([false, true])("keeps a cold resume's genuine zero-turn completion when it is owned or failed (failed: %s)", async (failed) => {
+    const adapter = adapterWith();
+    const input = runInput({ target: { kind: "resume", providerSessionId: PROVIDER_SESSION } });
+    const context = contextWith();
+    const run = adapter.createRun(input, context);
+    const query = await started();
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.result(PROVIDER_SESSION, {
+      num_turns: 0, result: failed ? "API Error: unavailable" : "", is_error: failed,
+      ...(!failed && { user_message_uuid: input.prompt[0]?.messageId }),
+    }));
+    expect(ends(await drain(run))).toEqual([
+      expect.objectContaining({ reason: failed ? "error" : "completed", turnCount: 0 }),
+    ]);
+    expect(context.adopted).toEqual([]);
+    await adapter.stopProcess(SESSION);
+  });
+
   /** Runs one turn to its result on the process, and releases it as the host does. */
   const oneTurn = async (adapter: ReturnType<typeof adapterWith>, input: RunInput, query?: FakeQuery) => {
     const run = adapter.createRun(input, contextWith());
@@ -1812,14 +1984,14 @@ describe("the process across turns", () => {
     await vi.waitFor(() => expect(port).toContain("unhold task:task_1"));
     const second = await oneTurn(adapter, runInput({ additionalDirectories: ["/data/banks/team"], target: resume }));
     expect(first.query.closed).toBe(true);
-    expect(second.query.options.additionalDirectories).toEqual(["/data/banks/team"]);
+    expect(second.query.options.additionalDirectories).toEqual(["/data/banks/team", "/data/containment/session/scratch"]);
     await second.finish();
     const third = await oneTurn(adapter, runInput({ additionalDirectories: ["/data/banks/team"], target: resume }), second.query);
     await third.finish();
     expect(fake.queries).toHaveLength(2);
     const fourth = await oneTurn(adapter, runInput({ additionalDirectories: [], target: resume }));
     expect(second.query.closed).toBe(true);
-    expect(fourth.query.options.additionalDirectories).toBeUndefined();
+    expect(fourth.query.options.additionalDirectories).toEqual(["/data/containment/session/scratch"]);
     await fourth.finish();
   });
 
@@ -2452,6 +2624,220 @@ describe("a run that joins a kept process", () => {
     run.release();
     return query;
   };
+
+  it("holds compatible runs in order behind a background turn without changing its settings or broker (#2126)", async () => {
+    const adapter = adapterWith();
+    const context = contextWith(async () => ({ decision: "deny", message: "Current turn's broker." }));
+    const query = await keptByTask(adapter, context);
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("background", []));
+    await vi.waitFor(() => expect(context.adopted).toHaveLength(1));
+    const background = context.adopted[0] as ProviderTurn;
+    background.onAdopted?.("background-run");
+    const resume = { kind: "resume", providerSessionId: PROVIDER_SESSION } as const;
+    const next = runInput({ target: resume, model: "sonnet", mode: "plan", effort: "high" });
+    const run = adapter.createRun(next, contextWith());
+    const later = runInput({ target: resume });
+    const last = adapter.createRun(later, contextWith());
+    expect(await query.canUseTool("Read", { file_path: "/work/repo/file" })).toEqual(expect.objectContaining({ behavior: "deny", message: "Current turn's broker." }));
+    expect(query.prompts).toHaveLength(1);
+    expect(query.models).toEqual([]);
+    expect(query.modes).toEqual([]);
+    expect(query.flags).toEqual([]);
+    query.emit(sdk.result(PROVIDER_SESSION));
+    expect(ends(await drain(background))).toEqual([expect.objectContaining({ reason: "completed" })]);
+    await query.promptsPushed(2);
+    expect(query.prompts.map((prompt) => prompt.uuid)).toEqual([query.prompts[0]?.uuid, next.prompt[0]?.messageId]);
+    expect(query.models).toEqual(["sonnet"]);
+    expect(query.modes).toEqual(["plan"]);
+    expect(query.flags).toEqual([{ effortLevel: "high" }]);
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("next", [next.prompt[0]?.messageId as string]), sdk.result(PROVIDER_SESSION));
+    expect(ends(await drain(run))).toEqual([expect.objectContaining({ reason: "completed" })]);
+    await query.promptsPushed(3);
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("last", [later.prompt[0]?.messageId as string]), sdk.result(PROVIDER_SESSION));
+    expect(ends(await drain(last))).toEqual([expect.objectContaining({ reason: "completed" })]);
+    expect(fake.queries).toHaveLength(1);
+    expect(port).toContain("hold task:task_1");
+    expect(port).not.toContain("unhold task:task_1");
+  });
+
+  it("keeps a held run's latest mode local until its attachment slot opens (#2126)", async () => {
+    const adapter = adapterWith();
+    const input = runInput();
+    const first = adapter.createRun(input, contextWith());
+    const query = await started();
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("first", [input.prompt[0]?.messageId as string]), sdk.text("first", "Working."));
+    const read = reading(first);
+    await vi.waitFor(() => expect(read.events.some((event) => event.type === "assistant.text")).toBe(true));
+    const next = runInput({ target: { kind: "resume", providerSessionId: PROVIDER_SESSION }, mode: "acceptEdits" });
+    const held = adapter.createRun(next, contextWith());
+    await held.setMode?.("plan");
+    await held.setMode?.("auto");
+    expect(query.modes).toEqual([]);
+    expect(query.prompts).toHaveLength(1);
+    query.emit(sdk.result(PROVIDER_SESSION));
+    await read.done;
+    await query.promptsPushed(2);
+    expect(query.modes).toEqual(["auto"]);
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("next", [next.prompt[0]?.messageId as string]), sdk.result(PROVIDER_SESSION));
+    expect(ends(await drain(held))).toEqual([expect.objectContaining({ reason: "completed" })]);
+  });
+
+  it("keeps held mode changes local when a background turn opens during attachment settings (#2126)", async () => {
+    let release: () => void = () => undefined;
+    fake.controls = { flagSettings: () => new Promise<void>((resolve) => (release = resolve)) };
+    const adapter = adapterWith();
+    const context = contextWith();
+    const query = await keptByTask(adapter, context);
+    const next = runInput({ target: { kind: "resume", providerSessionId: PROVIDER_SESSION }, effort: "high" });
+    const held = adapter.createRun(next, contextWith());
+    await vi.waitFor(() => expect(query.flags).toHaveLength(1));
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("background", []));
+    await vi.waitFor(() => expect(context.adopted).toHaveLength(1));
+    const background = context.adopted[0] as ProviderTurn;
+    background.onAdopted?.("background-run");
+    release();
+    await held.setMode?.("plan");
+    await held.setMode?.("auto");
+    expect(query.modes).toEqual([]);
+    expect(query.prompts).toHaveLength(1);
+    query.emit(sdk.result(PROVIDER_SESSION));
+    await drain(background);
+    await query.promptsPushed(2);
+    expect(query.modes).toEqual(["auto"]);
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("next", [next.prompt[0]?.messageId as string]), sdk.result(PROVIDER_SESSION));
+    expect(ends(await drain(held))).toEqual([expect.objectContaining({ reason: "completed" })]);
+  });
+
+  it("yields attachment controls when a background turn opens during the model setter (#2126)", async () => {
+    const adapter = adapterWith();
+    const context = contextWith();
+    const input = runInput({ mode: "plan" });
+    const first = adapter.createRun(input, context);
+    const query = await started();
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("first", [input.prompt[0]?.messageId as string]), sdk.text("first", "Working."), sdk.tasks({ task_id: "task_1" }));
+    const read = reading(first);
+    await vi.waitFor(() => expect(read.events.some((event) => event.type === "assistant.text")).toBe(true));
+    let release: () => void = () => undefined;
+    const moving = new Promise<void>((resolve) => (release = resolve));
+    const setModel = query.setModel.bind(query);
+    query.setModel = async (model) => {
+      await setModel(model);
+      await moving;
+    };
+    const next = runInput({ target: { kind: "resume", providerSessionId: PROVIDER_SESSION }, model: "sonnet", mode: "plan", effort: "high" });
+    const held = adapter.createRun(next, contextWith());
+    await held.setMode?.("auto");
+    expect(query.modes).toEqual([]);
+    query.emit(sdk.result(PROVIDER_SESSION));
+    await read.done;
+    first.release();
+    await vi.waitFor(() => expect(query.models).toEqual(["sonnet"]));
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("background", []));
+    await vi.waitFor(() => expect(context.adopted).toHaveLength(1));
+    const background = context.adopted[0] as ProviderTurn;
+    background.onAdopted?.("background-run");
+    release();
+    // The background run's control also proves attachment released the control queue.
+    await background.setMode?.("plan");
+    expect(query.modes).toEqual([]);
+    expect(query.flags).toEqual([]);
+    expect(query.prompts).toHaveLength(1);
+    query.emit(sdk.result(PROVIDER_SESSION));
+    await drain(background);
+    await query.promptsPushed(2);
+    expect(query.modes).toEqual(["auto"]);
+    expect(query.flags).toEqual([{ effortLevel: "high" }]);
+    expect(query.models).toEqual(["sonnet"]);
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("next", [next.prompt[0]?.messageId as string]), sdk.result(PROVIDER_SESSION));
+    expect(ends(await drain(held))).toEqual([expect.objectContaining({ reason: "completed" })]);
+  });
+
+  it("holds a new run and its sends behind the current turn, and withdraws or interrupts them locally (#2126)", async () => {
+    const adapter = adapterWith();
+    const input = runInput();
+    const first = adapter.createRun(input, contextWith());
+    const query = await started();
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("first", [input.prompt[0]?.messageId as string]), sdk.text("first", "Working."));
+    const read = reading(first);
+    await vi.waitFor(() => expect(read.events.some((event) => event.type === "assistant.text")).toBe(true));
+    const resume = { kind: "resume", providerSessionId: PROVIDER_SESSION } as const;
+    const next = adapter.createRun(runInput({ target: resume }), contextWith());
+    const withdrawn = message("Take this back");
+    const held = message("Keep this for later");
+    await next.send(withdrawn);
+    await next.send(held);
+    expect(query.prompts).toHaveLength(1);
+    expect(await next.withdraw?.(withdrawn.messageId)).toEqual({ withdrawn: true });
+    expect(await next.interrupt()).toEqual({ stillQueued: [held.messageId] });
+    expect(ends(await drain(next))).toEqual([expect.objectContaining({ reason: "interrupted" })]);
+    expect(query.cancelRequests).toEqual([]);
+    expect(query.interrupts).toBe(0);
+    const later = runInput({ target: resume });
+    const last = adapter.createRun(later, contextWith());
+    const followUp = message("And this too");
+    await last.send(followUp);
+    query.emit(sdk.result(PROVIDER_SESSION));
+    await read.done;
+    await query.promptsPushed(3);
+    expect(query.prompts.slice(1).map((prompt) => prompt.uuid)).toEqual([later.prompt[0]?.messageId, followUp.messageId]);
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("last", [later.prompt[0]?.messageId as string, followUp.messageId]), sdk.result(PROVIDER_SESSION));
+    const events = await drain(last);
+    expect(events).toContainEqual({ type: "message.delivered", payload: { messageId: followUp.messageId, delivery: "prompt" } });
+    expect(ends(events)).toEqual([expect.objectContaining({ reason: "completed" })]);
+  });
+
+  it("holds a compatible run while the provider's turn owner is still undecided (#2126)", async () => {
+    const adapter = adapterWith();
+    const context = contextWith();
+    const query = await keptByTask(adapter, context);
+    query.emit(sdk.init(PROVIDER_SESSION));
+    await vi.waitFor(() => expect(clock.pending()).toBe(1));
+    const input = runInput({ target: { kind: "resume", providerSessionId: PROVIDER_SESSION } });
+    const next = adapter.createRun(input, context);
+    expect(query.prompts).toHaveLength(1);
+    query.emit(sdk.replyStart("background", []));
+    await vi.waitFor(() => expect(context.adopted).toHaveLength(1));
+    expect(query.prompts).toHaveLength(1);
+    query.emit(sdk.result(PROVIDER_SESSION));
+    await query.promptsPushed(2);
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("next", [input.prompt[0]?.messageId as string]), sdk.result(PROVIDER_SESSION));
+    expect(ends(await drain(next))).toEqual([expect.objectContaining({ reason: "completed" })]);
+  });
+
+  it.each(["stop", "transport"] as const)("ends a held run when the process closes by %s without sending its prompt (#2126)", async (how) => {
+    const adapter = adapterWith();
+    const context = contextWith();
+    const query = await keptByTask(adapter, context);
+    query.emit(sdk.init(PROVIDER_SESSION), sdk.replyStart("background", []));
+    await vi.waitFor(() => expect(context.adopted).toHaveLength(1));
+    const next = adapter.createRun(runInput({ target: { kind: "resume", providerSessionId: PROVIDER_SESSION } }), contextWith());
+    if (how === "stop") await adapter.stopProcess(SESSION);
+    else query.fail(new Error("Transport lost."));
+    expect(ends(await drain(next))).toEqual(how === "stop" ? [] : [expect.objectContaining({ reason: "error" })]);
+    expect(query.prompts).toHaveLength(1);
+  });
+
+  it.each<[string, Partial<RunInput>]>([
+    ["resume target", { target: { kind: "fresh" } }],
+    ["resume target", { target: { kind: "resume", providerSessionId: "another-session" } }],
+    ["account directory", { account: { id: "other", directory: "/data/accounts/other" } }],
+    ["working directory", { workspace: { kind: "directory", path: "/work/other" } }],
+    ["repository trust", { trusted: true }],
+    ["tool servers", { toolServers: [{ name: "other", config: { type: "http", url: "http://localhost:9999/tools" } }] }],
+    ["instructions", { instructions: "Use different instructions." }],
+    ["confinement", { additionalDirectories: ["/data/banks/other"] }],
+    ["process environment", { processEnvironment: { ...EMPTY_PROCESS_ENVIRONMENT, key: "other" } }],
+    ["skill set", { skillSet: skillSetOf("other") }],
+    ["bypass opt-in", { ceiling: "bypassPermissions", mode: "bypassPermissions" }],
+  ])("names a differing %s when refusing a run while background work is held (#2126)", async (difference, changes) => {
+    const adapter = adapterWith();
+    const query = await keptByTask(adapter, contextWith());
+    const input = runInput({ target: { kind: "resume", providerSessionId: PROVIDER_SESSION }, ...changes });
+    expect(() => adapter.createRun(input, contextWith())).toThrow(`different ${difference}`);
+    expect(query.closed).toBe(false);
+    expect(fake.queries).toHaveLength(1);
+    expect(query.prompts).toHaveLength(1);
+  });
 
   it("gives the one waiting run a turn the CLI opens with a delivery-failure result that names no one", async () => {
     const adapter = adapterWith();

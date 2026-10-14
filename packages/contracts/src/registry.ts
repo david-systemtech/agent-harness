@@ -1,3 +1,4 @@
+import { reportsSubmit } from "./methods/reports.js";
 import { webOriginMethods } from "./web/origin-policy.js";
 import { webAttentionMethods } from "./web/attention.js";
 import { banksValidatorUpdate } from "./bank-validator-update.js";
@@ -35,6 +36,7 @@ import {
   sessionsSetWorkspace,
   sessionsDelete,
   sessionsFork,
+  transcriptImage,
   sessionsGet,
   sessionsList,
   sessionsListDeleted,
@@ -77,7 +79,7 @@ import {
   permissionsSettingsSet,
 } from "./methods/permissions.js";
 import { runsInterrupt, runsReadNow, runsSend, runsStart, runsStopTask, runsWithdraw } from "./methods/runs.js";
-import { providersList, providersProcessesList, providersProcessesStop } from "./methods/providers.js";
+import { providersList, providersProcessesList, providersProcessesStatus, providersProcessesStop } from "./methods/providers.js";
 import { settingsGet, settingsUpdate } from "./methods/settings.js";
 import { setupCheck, setupMint } from "./methods/setup.js";
 import { carryOverAssignMemory, carryOverInventory, carryOverRun } from "./methods/carry-over.js";
@@ -260,6 +262,7 @@ export const methods = [
   groupsReorder,
   groupsDelete,
   sessionsList,
+  transcriptImage,
   sessionsGet,
   sessionsListDeleted,
   groupsList,
@@ -274,6 +277,7 @@ export const methods = [
   runsWithdraw,
   providersList,
   providersProcessesList,
+  providersProcessesStatus,
   providersProcessesStop,
   accountsList,
   accountsProbe,
@@ -303,6 +307,7 @@ export const methods = [
   instructionsDismissSuggestion,
   instructionsRestoreSuggestion,
   instructionsImport,
+  reportsSubmit,
   forgeAccountsList,
   forgeAccountsAdd,
   forgeAccountsUpdate,

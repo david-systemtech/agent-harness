@@ -29,12 +29,16 @@ const execute = async (exitCode: number, blockedSource = "", grantFails = false)
     join(scratch, "scripts/stop-windows-process-tree.ps1"));
   copyFileSync(join(import.meta.dirname, "../scripts/windows-smoke-diagnostics.ps1"),
     join(scratch, "scripts/windows-smoke-diagnostics.ps1"));
+  copyFileSync(join(import.meta.dirname, "../scripts/windows-desktop-update-smoke.ps1"),
+    join(scratch, "scripts/windows-desktop-update-smoke.ps1"));
   copyFileSync(join(import.meta.dirname, "../scripts/check-packaged-update-disk.mjs"),
     join(scratch, "scripts/check-packaged-update-disk.mjs"));
   copyFileSync(join(import.meta.dirname, "../scripts/check-packaged-provider-sign-in.mjs"),
     join(scratch, "scripts/check-packaged-provider-sign-in.mjs"));
   copyFileSync(join(import.meta.dirname, "../scripts/check-packaged-account-recovery.mjs"),
     join(scratch, "scripts/check-packaged-account-recovery.mjs"));
+  copyFileSync(join(import.meta.dirname, "../scripts/check-packaged-resume.mjs"),
+    join(scratch, "scripts/check-packaged-resume.mjs"));
   copyFileSync(join(import.meta.dirname, "../scripts/check-packaged-terminal-state.mjs"),
     join(scratch, "scripts/check-packaged-terminal-state.mjs"));
   copyFileSync(join(import.meta.dirname, "../scripts/check-packaged-terminal-drain.mjs"),
@@ -90,9 +94,11 @@ function Start-Process {
   if (!(Test-Path (Join-Path $WorkingDirectory 'scripts/check-packaged-update-disk.mjs'))) { throw 'The disk smoke was not staged for the ordinary user' }
   if (!(Test-Path (Join-Path $WorkingDirectory 'scripts/check-packaged-provider-sign-in.mjs'))) { throw 'The provider smoke was not staged for the ordinary user' }
   if (!(Test-Path (Join-Path $WorkingDirectory 'scripts/check-packaged-account-recovery.mjs'))) { throw 'The account recovery smoke was not staged for the ordinary user' }
+  if (!(Test-Path (Join-Path $WorkingDirectory 'scripts/check-packaged-resume.mjs'))) { throw 'The resume smoke was not staged for the ordinary user' }
   if (!(Test-Path (Join-Path $WorkingDirectory 'scripts/check-packaged-terminal-state.mjs'))) { throw 'The terminal smoke was not staged for the ordinary user' }
   if (!(Test-Path (Join-Path $WorkingDirectory 'scripts/check-packaged-terminal-drain.mjs'))) { throw 'The terminal drain smoke was not staged for the ordinary user' }
   if (!(Test-Path (Join-Path $WorkingDirectory 'scripts/check-packaged-bank-describe.mjs'))) { throw 'The bank smoke was not staged for the ordinary user' }
+  if (!(Test-Path (Join-Path $WorkingDirectory 'scripts/windows-desktop-update-smoke.ps1'))) { throw 'The desktop update launch check was not staged for the ordinary user' }
   $child = Join-Path $WorkingDirectory 'smoke.ps1'
   Copy-Item $child $env:CHILD_COPY
   Set-Content $RedirectStandardOutput ('ordinary-user child output password=' + $Credential.GetNetworkCredential().Password)

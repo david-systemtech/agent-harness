@@ -520,8 +520,10 @@ outranks running cyan pulse, title truncates; trailing mono 2xs/faint relative
 age. Second line mono 2xs/faint:10px branch, account 8px square swatch/radius 3,
 account label capped 176, environment badge and the GUI's tags/receipt/PR data.
 Do not fabricate an account for unrecorded attribution. Hover wash; a session
-shown in the grid uses wash-strong/ink, archived 60% opaque, unreachable dim with
-its sentence. No active left rule. Counts have a gap, never join the heading.
+shown in the focused pane uses wash-strong/ink; sessions open in other panes
+use beam/10 with ink and an accessible "Open in a pane" description. Archived
+rows are 60% opaque; unreachable rows stay dim with their connection sentence.
+No active left rule. Counts have a gap, never join the heading.
 
 Headings: ChevronDown 10 rotates−90° when folded, Pin/Layers/Folder 10 beam-text,
 Archive 10 faint; label chrome-label, right count mono/faint. Rich row tooltip
@@ -602,10 +604,18 @@ All titles truncate with full tooltip. Transcript, composer and status share
 the centred reading column: Comfortable fixed 920px (preset), Wide 80rem
 (1280px at preset), Full uncapped.
 Transcript x 16/y 14, row gap 12; composer/status x 12. Transcript scroller contains
-rows only; composer and status remain beneath it. A row has a 56px label/time
-spine, gap 8, body gap 4; user row reverses the spine to the right. Ordinary labels
-trade for a hover mono clock at 60% opacity; reasoning keeps label and puts clock
-16px beneath. Keep row identities for search and jump, without re-rendering
+rows only; composer and status remain beneath it. A row has a 56px label
+spine, gap 8, body gap 4; user row reverses the spine to the right. Labels stay
+visible. Every message (including reasoning), individual tool call, folded tool
+group and turn end has a visible, right-aligned mono/2xs/ink-faint clock in the
+body, above its content. Use the recorded first delta, tool start, message sent
+or turn end time, in the client’s local 24-hour HH:MM. Prefix YYYY-MM-DD when
+the day differs from today or the preceding timestamp’s day. The full ISO
+instant is the time element’s title and datetime. Never wrap or truncate clocks;
+keep them outside the 56px desktop/32px phone spine so text size 20 fits. Older
+compacted items without recorded times omit the clock rather than inventing one.
+The TUI uses the same words on a dim, right-aligned line. There is no toggle.
+Keep row identities for search and jump, without re-rendering
 all rows for a streaming delta. Closed fold children are unmounted.
 
 Opening a session pins to end. Follow content growth while pinned; a user scroll
@@ -639,7 +649,7 @@ the outer page or dock.
 | Tool | Collapsed lg/hairline/wash card; open or artifact hairline-strong; failure signal/35 edge. Header x 10/y 8/gap 8, category icon, mono name, truncated summary, edit counts, duration, status badge. Running cyan pulse, success mint, error signal, denied amber, cancelled neutral. Expand in place. |
 | Tool detail | Diff for edits; argument/input/raw folds retained by call identity, default input open except edits. Square formatted JSON/raw output max 288. Result fold defaults closed for success, open for failure. Preserve truncation, image-result and artifact controls; errors name code/message without replacing prior output. |
 | Activity group | One chrome-label summary and chevron for contiguous quiet calls, cyan category icons/status, counts/time mono; collapsed hides child rows, open draws the same tool recipes. Running state visible while collapsed; reasoning keeps its own row. |
-| Notice | Empty spine or hover clock, Info/TriangleAlert by severity, mono line plus faint detail; semantic tone, no modal. |
+| Notice | Empty spine, Info/TriangleAlert by severity, mono line plus faint detail; semantic tone, no modal. |
 | Command/check | Terminal icon, mono command and muted args/output; running cyan, pass mint, failure/timeout signal and labelled exit/truncation. The check projection owns its content. |
 | Turn end | “end” spine; lg/hairline/wash summary; failed signal/40 edge and signal/5 fill. Completed mint; interrupted/limit/permission denial amber; disposed neutral; error signal. Optional elapsed, turns, tokens/cache/cost; error text/code/retryability. Summary preference gates accounting; errors and silent runs keep a record. |
 | Queue/steer, fork/rewind | §15's labels, folds and verbs retain runtime state; use the same spine, badges and fold recipes. |
@@ -1243,7 +1253,7 @@ script, geometry expectations and baseline; surface tickets add separate files.
 | first-run | Intro starting/failure/ready, all 11 steps, account gate, close confirmation, long card | Rail 280, number 18, choices≤620; footer visible with Back/Skip/Continue or Finish in both captures |
 | product-surfaces | Pairing, queue/fork/rewind/check, theme, shortcuts, banks/routines | Shared primitive dimensions, state labels and scope/command parity |
 
-Light subset: window-empty, window-not-ready, primitives, transcript with diff,
+Light subset: window-empty, window-not-ready, primitives, transcript with diff and timestamps,
 inline-asks, composer/status (and its usage details)/run-picker, palette/dialogs/notices, Settings
 Accounts/Permissions/Theme/Usage and first-run intro/Account/Appearance. Other dark
 scenes still test token resolution in both ladders through theme/harness checks.
@@ -1262,43 +1272,67 @@ improvement names its geometry/state change and updates this contract if it
 changes a stated value. Neither private screenshots nor private names are
 committed as baselines; baseline scenes contain invented neutral data.
 
-## 17. Phone browser projection (milestone 1)
+## 17. Phone design system
 
-The owner's 2026-10-04 milestone amendment is specified in
-[web-client.md](web-client.md). Desktop dimensions above still govern the
-wide layout; the following rules govern phone use and its gallery evidence.
+The owner's 2026-10-13 decisions on #2131 govern the phone layer. Desktop
+measurements above remain unchanged. The phone uses its own type, spacing and
+corner tokens in `packages/gui/src/phone/tokens.css`, over the colour tokens
+from ADR 0023. Follow the OS light/dark ladder. Use flat abyss/panel/float
+surfaces with few hairlines, system UI sans for human text and JetBrains Mono
+for commands, paths, ids, code and output. Keep focus and contrast tokens.
 
-Phone projection uses one shared layout decision: width below 640px, or a
-coarse primary pointer without hover at width 640–960px inclusive and layout
-height at most 500px. Short landscape 844×390 and 740×360 retain one conversation;
-keyboard VisualViewport shrink and pinch zoom never classify an ordinary desktop
-as a phone. Returning portrait keeps the drawer, active session, draft and run;
-returning to a genuinely wide non-phone viewport restores the held desktop panes.
-Phone styles and viewport fitting consume this decision.
+### Foundation
 
-Show one conversation with a session drawer and phone header
-(More, Settings, attention). Preserve the desktop pane arrangement for return
-to wide mode; disable Split with a width reason. The existing below-900px
-pane-width dock rule becomes the side-column sheet, `min(480px, 85%)`. Closing
-or switching hides work without stopping a run, delegated task or terminal.
-Drawers/sheets trap and restore focus and close predictably.
-The session drawer consumes those shared visible bounds with no extra viewport
-observer. Open it onto a non-input focus target; only tapping Filter raises the
-search keyboard. Keep results scrolling internally, with Close, New session and
-footer actions above the keyboard. Restore focus with no document scroll on
-close or result selection. Hosted long-results evidence keeps a tall layout
-while visual height shrinks to 480 and offsetTop becomes 120, including text 20.
+One layout predicate governs the frame, Settings, viewport fitting, overlays
+and tokens: width below 640px, or a coarse primary pointer without hover at
+width 640–960px inclusive and layout height at most 500px. Short landscape
+844×390 and 740×360 retain the phone projection. Keyboard VisualViewport shrink
+and pinch zoom never classify an ordinary desktop as a phone.
 
-The Mode bottom sheet follows §10.5: one labelled choice per row, current
-selection and disabled ceiling reason, a fixed Close header and a scrolling
-choice list. It traps/restores focus without moving the conversation dock.
+At the default text size 16, the phone type ramp is:
 
-Keep abyss/panel/float/hairline tokens, rounded human controls and square
-machine output wells, the icon names, focus and contrast. Phone preset text
-size 16 uses the existing 11–20 preference; inputs are at least 16 CSS px and
-all tap hit areas at least 44px, including icons. Touch exposes actions that
-otherwise need hover. Long labels wrap without horizontal page overflow;
-keep pinch zoom and enlarged text at 20.
+| Token | CSS px | Use |
+| --- | --- | --- |
+| display / hero | 30 / 26 | Page titles / pairing |
+| title / headline | 20 / 17 | Content headings / bar and sheet titles |
+| body / callout | 16 / 15 | Prose, inputs and row labels / actions |
+| subhead / footnote | 14 / 13 | Secondary rows / section labels and times |
+| caption / badge | 12 / 11 | Metadata / counts |
+| mono-command / mono-output | 13 / 12 | Commands / output |
+
+Body line height is 1.5; headings use 1.3 and display uses 1.25. The text-size
+preference scales type alone; root rem stays 16px on phone. Inputs stay at
+least 16px to avoid focus zoom. Use the fixed spacing grid 2, 4, 8, 12, 16,
+20, 24, 32 and 40px. Screen gutters are 16px plus safe insets. Comfortable rows
+have 48px minimum height, 64px with details, and grow for wrapped larger text.
+Bars are 52px and toolbars 48px. Control corners are 8px; machine wells are square.
+
+`touch-target` expands a compact control's pointer box to at least 44×44px
+without enlarging its painted surface. Owners reserve space around compact
+controls so expanded targets cannot overlap a neighbour or be clipped by a
+scrollport. Gallery `hitArea: 44` checks target size and pointer reception at
+its centre and edges, including the transparent pseudo-element and borders.
+Row controls may use a full 48–64px visible row. Labels wrap between words;
+long machine strings belong in a scrolling or deliberately wrapping well.
+Never apply `overflow-wrap:anywhere` to every phone action or dialog.
+
+### Navigation and surface ownership
+
+The redesign progresses through #2148–#2153: a page stack with Back (Sessions,
+Conversation, Workspace and Settings), keeping the top-left sessions drawer for
+quick switching. Later phases provide the one-surface composer, grouped-list
+Settings and unified sheets. Until each phase lands, preserve the current phone
+header, drawer, overlays and registered Settings navigation. Closing or
+switching hides work without stopping a run, delegated task or terminal.
+Drawers/sheets trap and restore focus and close predictably. Preserve the
+held desktop pane arrangement when returning to a wide non-phone layout.
+
+The foundation specimen captures type, compact and text buttons, comfortable
+rows and a sheet header in both ladders, at 360/390px, text 20 and keyboard
+height. Re-accept deliberate phone type/spacing differences through
+[the gallery](../agents/gallery.md); desktop captures must remain identical.
+
+### Viewport and interaction contracts
 
 Use one phone web-frame viewport owner for VisualViewport height and offsetTop
 at scale 1, with `100dvh`/window-height fallback, `viewport-fit=cover` and

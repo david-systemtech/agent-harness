@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./phone/tokens.css";
 @import "@fontsource-variable/archivo";
 @import "@fontsource-variable/archivo/wght-italic.css";
 @import "@fontsource-variable/jetbrains-mono";
@@ -140,6 +141,37 @@
   --color-environment-violet: var(--environment-violet);
   --color-environment-pink: var(--environment-pink);
 }
+
+/* Phone utilities read variables defined only by the phone projection. */
+@theme inline {
+  --text-phone-caption: var(--phone-text-caption);
+  --text-phone-caption--line-height: 1.333333;
+  --text-phone-label: var(--phone-text-label);
+  --text-phone-label--line-height: 1.428571;
+  --text-phone-body: var(--phone-text-body);
+  --text-phone-body--line-height: 1.5;
+  --text-phone-title: var(--phone-text-title);
+  --text-phone-title--line-height: 1.3;
+  --text-phone-display: var(--phone-text-display);
+  --text-phone-display--line-height: 1.2;
+  --text-phone-hero: var(--phone-text-hero);
+  --text-phone-headline: var(--phone-text-headline);
+  --text-phone-callout: var(--phone-text-callout);
+  --text-phone-subhead: var(--phone-text-subhead);
+  --text-phone-footnote: var(--phone-text-footnote);
+  --text-phone-badge: var(--phone-text-badge);
+  --text-phone-mono-command: var(--phone-text-mono-command);
+  --text-phone-mono-output: var(--phone-text-mono-output);
+  --spacing-phone-1: var(--phone-space-1);
+  --spacing-phone-2: var(--phone-space-2);
+  --spacing-phone-3: var(--phone-space-3);
+  --spacing-phone-4: var(--phone-space-4);
+  --spacing-phone-6: var(--phone-space-6);
+  --spacing-phone-8: var(--phone-space-8);
+  --radius-phone-control: var(--phone-radius-control);
+  --radius-phone-machine: var(--phone-radius-machine);
+}
+
 
 /* The window's ground and ink before and around the frame, so nothing but the canvas shows while it mounts. */
 @layer base {
@@ -326,7 +358,7 @@
 }
 [data-web-client] :is(button, select, input) { min-height: 44px; }
 [data-web-client] button { min-width: 44px; }
-[data-web-client] :is(input, select, textarea) { font-size: max(16px, 1rem); }
+[data-web-client] :is(input, select, textarea) { font-size: max(16px, var(--phone-text-body, 1rem)); }
 [data-web-client] [data-dock-owner] { min-width: 0; }
 @media (max-width: 639px) {
   [data-web-client] [data-composer-column] { max-width: 100%; }
@@ -375,3 +407,22 @@ html[data-phone-viewport] [data-web-client] {
 
 /* The dark outline variant is translucent; a reading control must cover the text beneath it. */
 [data-web-client] [data-transcript-jump] { background: var(--float); }
+
+/* Caption PRs yield before the identity. Rem thresholds also cover enlarged text. */
+[data-pane-caption] { container: pane-caption / inline-size; }
+[data-caption-title] { min-width: max(100px, 4.5rem); }
+[data-caption-identity] [role=note] { min-width: 3.5rem; }
+[data-pr-chips], [data-pr-expanded] { display: none; }
+@container pane-caption (min-width: 40rem) {
+  [data-pr-chips] { display: flex; }
+  [data-pr-compact] { display: none; }
+  [data-pr-expanded] { display: inline; }
+  [data-pr-overflow][data-pr-has-others="false"] { display: none; }
+}
+
+/* At the pane floor, keep directory text before optional branch detail and separators. */
+@container pane-caption (width < 40rem) {
+  [data-caption-content]:has([data-caption-pull-requests]) { padding-inline: 0.125rem; gap: 0.125rem; }
+  [data-caption-content]:has([data-caption-pull-requests]) [data-caption-identity] { gap: 0.125rem; }
+  [data-caption-content]:has([data-caption-pull-requests]) :is([data-caption-divider], [data-caption-workspace-branch]) { display: none; }
+}
